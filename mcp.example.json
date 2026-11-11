@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "vizengine": {
+      "command": "python",
+      "args": ["C:\\TAM\\YOL\\viztools\\viz_mcp_server.py"],
+      "env": { "VIZ_PORT": "6100" }
+    }
+  }
+}

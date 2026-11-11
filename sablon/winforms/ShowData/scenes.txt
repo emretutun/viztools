@@ -1,0 +1,2 @@
+// Sahne yollari. basepath sonraki satirlara on ek olur.
+__SCENES__

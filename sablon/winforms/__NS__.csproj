@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyTitle>__BASLIK__</AssemblyTitle>
+    <Product>__BASLIK__</Product>
+    <!-- NTR Show'dan kopyalanan REBase dosyalarindaki eski nullable uyarilarini bastir -->
+    <NoWarn>$(NoWarn);CS8600;CS8602;CS8603;CS8604;CS8618;CS8622;CS8625;CS0642;CS0168;CS0219</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- REBase (NTR Show kopyasi) Timer'i System.Windows.Forms.Timer olarak kullanir; ortuk System.Threading cakisiyor -->
+    <Using Remove="System.Threading" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ShowData cikti klasorune kopyalanir. Calisan veri (kj_list.json) derlemeyle DAGITILMAZ:
+         uygulama ilk acilista kj_list.ornek.json'dan olusturur, sonra hep kendi dosyasini kullanir. -->
+    <None Update="ShowData\scenes.txt;ShowData\setting;ShowData\IpList.txt;ShowData\DenyIPlist.txt;ShowData\kj_list.ornek.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

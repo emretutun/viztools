@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+# buyuk ornek arsivler ve makineye ozel taramalar
+samples/*.via
+scenes/
+.viztools_ui.json
+.viztools_web.json

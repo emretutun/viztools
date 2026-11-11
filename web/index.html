@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>viztools · Sahneden reji uygulaması</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">V</div>
+      <div>
+        <div class="brand-name">viztools</div>
+        <div class="brand-sub">salt okunur · 127.0.0.1</div>
+      </div>
+    </div>
+
+    <section class="card">
+      <div class="card-title">
+        <span class="dot" id="engineDot"></span>
+        <span>Canlı engine</span>
+        <span class="hint" id="engineHint">kontrol ediliyor…</span>
+      </div>
+      <div class="row">
+        <select id="layer" class="select">
+          <option>MAIN_SCENE</option><option>FRONT_SCENE</option><option>BACK_SCENE</option>
+        </select>
+        <label class="check"><input type="checkbox" id="details" checked> text ve aktiflik</label>
+      </div>
+      <button class="btn primary wide" id="btnScan">Sahneyi tara</button>
+      <div class="progress" id="progress" hidden><div class="bar" id="bar"></div><span id="progText"></span></div>
+    </section>
+
+    <section class="card">
+      <div class="card-title"><span>📦</span><span>.via dosyası</span><span class="hint">engine kapalıyken</span></div>
+      <select id="viaFile" class="select wide"></select>
+      <input id="viaPath" class="input wide" placeholder="veya tam yol: C:\...\sahne.via">
+      <button class="btn primary wide" id="btnVia">Dosyayı aç</button>
+      <div id="recent" class="recent"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-title"><span>🕘</span><span>Önceki taramalar</span><span class="hint">engine'siz açılır</span></div>
+      <div id="taramalar" class="recent"></div>
+    </section>
+
+    <section class="card actions" id="actions" hidden>
+      <div class="card-title"><span>⬇</span><span>Çıktılar</span></div>
+      <button class="btn wide" data-open="md">Şablon (.md)</button>
+      <button class="btn wide" data-open="cs">C# sabitleri (.cs)</button>
+      <button class="btn wide" data-open="json">JSON</button>
+      <button class="btn wide" id="btnVizScript">VizScript iskeletini kopyala</button>
+      <button class="btn wide" data-open="dir">Klasörü aç</button>
+    </section>
+
+    <details class="card adv">
+      <summary>Komut gönder (yalnızca GET)</summary>
+      <div class="row">
+        <input id="cmd" class="input mono wide" value="MAIN_SCENE*STAGE*DIRECTOR GET">
+        <button class="btn" id="btnSend">Gönder</button>
+      </div>
+      <pre id="cmdOut" class="out"></pre>
+    </details>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <div>
+        <h1 id="sceneName">Sahne yüklü değil</h1>
+        <div class="meta" id="sceneMeta">Artist'te sahneyi açıp Stage/Tree dallarını açın ve kaydedin, sonra soldan "Sahneyi tara".</div>
+      </div>
+      <div class="chips" id="chips"></div>
+    </header>
+
+    <div class="warn" id="warn" hidden></div>
+
+    <div class="toolbar">
+      <div class="tabs">
+        <button class="tab active" data-tab="dir">Director'lar <span class="count" id="cntDir">0</span></button>
+        <button class="tab" data-tab="con">Container'lar <span class="count" id="cntCon">0</span></button>
+        <button class="tab" data-tab="uyg">Reji uygulaması</button>
+      </div>
+      <input id="search" class="input search tree-only" placeholder="Ara…  (Ctrl+F)">
+      <button class="btn ghost tree-only" id="btnExpand" title="Tümünü aç">⤢</button>
+      <button class="btn ghost tree-only" id="btnCollapse" title="Tümünü kapat">⤡</button>
+    </div>
+
+    <div class="split" id="split">
+      <div class="tree" id="tree"><div class="empty">Önce bir sahne yükleyin.</div></div>
+
+      <div class="detail" id="detail">
+        <div class="empty">Soldan bir director ya da container seçin.<br><span class="muted">Satıra tıkla: detay · çift tık: yolu kopyala</span></div>
+      </div>
+    </div>
+
+    <div class="uyg" id="uyg" hidden>
+      <div class="uyg-form">
+        <div class="seg">
+          <button class="seg-b active" data-mod="yeni">Yeni uygulama</button>
+          <button class="seg-b" data-mod="guncelle">Mevcut uygulamayı güncelle</button>
+        </div>
+
+        <div class="mod-yeni">
+          <label class="fl">Uygulama adı<input id="uAd" class="input wide" placeholder="NTR Yeni Program"></label>
+          <label class="fl">Klasör<input id="uHedef" class="input wide mono"></label>
+        </div>
+        <div class="mod-guncelle" hidden>
+          <label class="fl">Uygulama<select id="uMevcut" class="select wide"></select></label>
+          <input id="uMevcutYol" class="input wide mono" placeholder="ya da klasör yolu yapıştırın, Enter">
+          <div class="muted small" id="uMevcutBilgi"></div>
+        </div>
+
+        <label class="fl">KJ sahnesinin Graphic Hub yolu<input id="uSahne" class="input wide mono" placeholder="/SHOW_TV_2025/REJI/PROGRAM/KJ/KJ_SAHNESI"></label>
+        <label class="fl">Kelebek klasörü <span class="muted">(isteğe bağlı)</span><input id="uKelebek" class="input wide mono" placeholder="/SHOW_TV_2025/REJI/PROGRAM/KELEBEK"></label>
+
+        <button class="btn primary wide big" id="btnUret">Uygulamayı üret ve derle</button>
+        <div class="muted small">Sahneye hiçbir şey yazılmaz. Uygulama çalıştırılmaz, yalnızca derlenir.</div>
+
+        <div class="sonuc" id="uSonuc" hidden>
+          <pre class="out log" id="uLog"></pre>
+          <div class="row" id="uSonucBtn" hidden>
+            <button class="btn" id="btnKlasor">Klasörü aç</button>
+            <button class="btn" id="btnCozum">Visual Studio'da aç</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="uyg-plan">
+        <div class="warn soru" id="uSorular" hidden></div>
+        <div class="muted small plan-ipucu">Panelde ne çıkacağını buradan seçin. Etiket butonda görünen yazıdır. Bir kalemin türünü değiştirmek için sağdaki seçimi kullanın.</div>
+        <div id="uPlan"><div class="empty">Önce soldan bir sahne yükleyin.</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><strong id="modalTitle">Sahne seç</strong><button class="btn ghost" id="modalClose">✕</button></div>
+    <input id="modalFilter" class="input wide" placeholder="filtrele…">
+    <div class="list" id="modalList"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+<script src="/app.js"></script>
+<script src="/uyg.js"></script>
+</body>
+</html>

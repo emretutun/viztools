@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 
-from .gen_csharp import short_paths, _UNNAMED
+from .gen_csharp import short_paths, _UNNAMED, tek_satir
 
 GIRIS_ADLARI = {"IN", "GIRIS", "START", "VER"}
 CIKIS_ADLARI = {"OUT", "CIKIS", "AL", "END"}
@@ -51,7 +51,7 @@ def _benzerlik(a: str, b: str) -> int:
 
 
 def _etiket(ad: str) -> str:
-    tr = {"CIFT": "ÇİFT", "SAG": "SAĞ", "DAKIKA": "DAKİKA", "GELISME": "GELİŞME", "ISIMLIK": "İSİMLİK",
+    tr = {"CIFT": "ÇİFT", "SAG": "SAĞ", "DAKIKA": "DAKİKA", "GELISME": "GELİŞME", "ISIMLIK": "İSİMLİK", "ISIM": "İSİM",
           "BAGLANTI": "BAĞLANTI", "GORUNTULU": "GÖRÜNTÜLÜ", "BAGLANTISI": "BAĞLANTISI"}
     return " ".join(tr.get(p, p) for p in ad.upper().split("_") if p and p != "KJ") or ad
 
@@ -75,18 +75,29 @@ def analiz_et(model: dict) -> dict:
         giris = next((d for d in cocuk if d["name"].upper() in GIRIS_ADLARI), None)
         cikis = next((d for d in cocuk if d["name"].upper() in CIKIS_ADLARI), None)
         if giris and cikis:
-            adaylar_grup.append((g, giris, cikis, [g] + alt))
+            adaylar_grup.append((g["name"], g, giris, cikis, [g] + alt, cocuk))
             continue
-        if g["name"].upper().endswith(("_OUT", "_CIKIS", "_OUT_ANIM")) or g["name"].upper() in GIRIS_ADLARI | CIKIS_ADLARI:
+        # (c) kardes director'lar X_IN + X_OUT (TELEFON_FOTOLU_IN / TELEFON_FOTOLU_OUT gibi)
+        mi = re.match(r"^(.+)_(IN|GIRIS)$", g["name"], re.I)
+        if mi:
+            ust_yol = g["name_path"].rsplit("$", 1)[0]
+            ko = yol.get(f"{ust_yol}${mi.group(1)}_OUT") or yol.get(f"{ust_yol}${mi.group(1)}_CIKIS")
+            if ko:
+                ara = [d for d in dirs if d["name_path"].rsplit("$", 1)[0] == ust_yol
+                       and d["name"].upper().startswith(mi.group(1).upper() + "_") and d not in (g, ko)]
+                adaylar_grup.append((mi.group(1), g, g, ko, [g] + alt + [ko], ara))
+                continue
+        if g["name"].upper().endswith(("_OUT", "_CIKIS", "_OUT_ANIM", "_IN", "_GIRIS")) or g["name"].upper() in GIRIS_ADLARI | CIKIS_ADLARI:
             continue
         ust_yol = g["name_path"].rsplit("$", 1)[0]
         kardes_out = yol.get(f"{ust_yol}${g['name']}_OUT") or yol.get(f"{ust_yol}${g['name']}_CIKIS")
         if kardes_out:
             kardes_anim = yol.get(f"{ust_yol}${g['name']}_OUT_ANIM")
-            adaylar_grup.append((g, g, kardes_anim or kardes_out, [g] + alt + [kardes_out] + ([kardes_anim] if kardes_anim else [])))
+            adaylar_grup.append((g["name"], g, g, kardes_anim or kardes_out,
+                                 [g] + alt + [kardes_out] + ([kardes_anim] if kardes_anim else []), []))
 
     gruplar, sorular = [], []
-    for g, giris, cikis, kapsam in adaylar_grup:
+    for grup_adi, g, giris, cikis, kapsam, cocuk in adaylar_grup:
         # grubun animasyon uyguladigi container adlari
         anim_adlari = []
         for d in kapsam:
@@ -98,7 +109,7 @@ def analiz_et(model: dict) -> dict:
             adaylar = [c for c in con_by_name.get(ad, []) if "text" in c]
             if not adaylar:
                 continue
-            en_iyi = max(adaylar, key=lambda c: max([_benzerlik(g["name"], p) for p in c["name_path"].split("$") if p] + [0]))
+            en_iyi = max(adaylar, key=lambda c: max([_benzerlik(grup_adi, p) for p in c["name_path"].split("$") if p] + [0]))
             metinler.append(en_iyi)
         # Adi metin alani gibi olanlar (TEXT, YAZI, SATIR, ISIM, TITLE...) varsa, digerleri sabit etikettir
         # (orn. "AZ SONRA" yazan Gotham-Bold); onlari disarida birak.
@@ -114,33 +125,64 @@ def analiz_et(model: dict) -> dict:
                 ata = by_path.get("$" + "$".join(parcalar[:i]))
                 if ata is not None and ata.get("active") is False and ata["name"] not in _UNNAMED:
                     gizli = True
-        sinif = "oge" if not metinler else ("kulakcik" if gizli else "tur")
         diger = [d["name"] for d in cocuk if d not in (giris, cikis)]
+        sinif = "oge" if not metinler else ("kulakcik" if gizli else "tur")
+        if sinif == "kulakcik" and diger:
+            sinif = "sayfali"   # gizli + yazili + ara animasyonlu: sayfa sayfa ilerleyen grafik (FLOT gibi)
         gruplar.append({
-            "kod": g["name"], "etiket": _etiket(g["name"]), "sinif": sinif,
+            "kod": grup_adi, "etiket": _etiket(grup_adi), "sinif": sinif,
+            "ust_yol": g["name_path"].rsplit("$", 1)[0],
             "giris": giris["name_path"], "cikis": cikis["name_path"],
             "ust": kisa.get(metinler[0]["name_path"], "").lstrip("!") if metinler else None,
             "alt": kisa.get(metinler[1]["name_path"], "").lstrip("!") if len(metinler) > 1 else None,
             "metin_sayisi": len(metinler),
-            "ornek_metin": [m.get("text", "")[:40] for m in metinler],
+            "ornek_metin": [tek_satir(m.get("text", ""))[:40] for m in metinler],
             "diger_alt_director": diger,
         })
         if len(metinler) > 2:
-            sorular.append(f"{g['name']}: {len(metinler)} metin alani var ({', '.join(m['name'] for m in metinler)}); "
-                           "ilk ikisi ust/alt alindi. Sayfali bir akis mi (DUA, ROLL gibi)? Ayri ele alinmali mi?")
-        if diger:
-            sorular.append(f"{g['name']}: giris/cikis disinda alt director'lar var ({', '.join(diger)}). "
-                           "Bunlar kendiliginden mi oynuyor, ayri buton mu ister?")
+            sorular.append(f"{grup_adi}: {len(metinler)} yazı alanı var ({', '.join(m['name'] for m in metinler)}). "
+                           "Uygulama yalnızca ilk ikisine yazar. Sayfalı bir grafikse (ROLL, DUA, FLOT gibi) üretici bunu "
+                           "henüz desteklemiyor; listeden işaretini kaldırıp sonradan elle ekleyin.")
+        if sinif == "sayfali":
+            sorular.append(f"{grup_adi}: sayfa sayfa ilerleyen bir grafik gibi görünüyor ({', '.join(diger)} animasyonu var). "
+                           "Üretici bunu henüz desteklemiyor; uygulamaya alınmadı, sonradan elle eklenir.")
+        elif diger:
+            sorular.append(f"{grup_adi}: giriş ve çıkış dışında başka animasyonlar da var ({', '.join(diger)}). "
+                           "Uygulama bunları oynatmaz. Ayrı buton gerekiyorsa sonradan elle eklenir.")
         if any(kisa.get(m["name_path"], "").startswith("!") for m in metinler):
-            sorular.append(f"{g['name']}: metin alani sahnede ayni adla birden fazla yerde var; uygulama ilk eslesene yazar. "
-                           "Sahnede adlarin tekil olmasi gerekebilir.")
+            sorular.append(f"{grup_adi}: yazı alanının adı sahnede birden fazla yerde geçiyor; uygulama ilk bulduğuna yazar. "
+                           "Yanlış yere yazarsa sahnede o container'a tekil bir ad verin.")
+
+    # ---- cift yuvali grafikler: X_1 / X_2 ayni grafigin iki yuvasidir (metin degisirken biri cikar digeri girer).
+    #      Uygulama tek yuva kullanir: en kucuk numarali kalir, digerleri plana alinmaz.
+    aileler: dict[str, list[tuple[int, dict]]] = {}
+    for t in gruplar:
+        m = re.match(r"^(.*?)_(\d+)$", t["kod"])
+        if m:
+            aileler.setdefault(m.group(1).upper(), []).append((int(m.group(2)), t))
+    yuvali = []
+    for taban, uyeler in aileler.items():
+        if len(uyeler) < 2 or len({(t["sinif"], t["alt"] is None) for _, t in uyeler}) != 1:
+            continue
+        uyeler.sort(key=lambda x: x[0])
+        ana = uyeler[0][1]
+        ana["ad"] = taban
+        ana["etiket"] = _etiket(taban)
+        for _, t in uyeler[1:]:
+            t["sinif"] = "yuva"
+        yuvali.append(f"{taban} ({', '.join(t['kod'] for _, t in uyeler)})")
+    if yuvali:
+        sorular.append("Bu sahnede bazı grafikler iki yuvalı kurulmuş: " + "; ".join(yuvali) + ". "
+                       "Uygulama yalnızca 1 numaralı yuvayı kullanır. Bir şey yapmanız gerekmez; "
+                       "yayında metin değiştirirken 2. yuvaya geçiş istiyorsanız bunu ayrıca belirtin.")
 
     # ---- bant onerisi ----
+    ad = lambda t: t.get("ad", t["kod"])
     turler = [t for t in gruplar if t["sinif"] == "tur"]
     gruplu: dict[str, list[dict]] = {}
     for t in turler:
-        gruplu.setdefault(_anahtar(t["kod"]), []).append(t)
-    bantlar, ozeller = [], []
+        gruplu.setdefault(_anahtar(ad(t)), []).append(t)
+    bantlar, ozeller, yalniz_ciftli = [], [], []
     for anahtar, liste in gruplu.items():
         tekli = [t for t in liste if t["alt"] is None]
         ciftli = [t for t in liste if t["alt"] is not None]
@@ -150,15 +192,24 @@ def analiz_et(model: dict) -> dict:
             for fazla in tekli[1:] + ciftli[1:]:
                 sorular.append(f"{fazla['kod']}: '{anahtar or 'NORMAL'}' bandinda birden fazla aday var; hangisi kullanilacak?")
         elif ciftli:
-            for t in ciftli:
-                bantlar.append({"anahtar": _anahtar(t["kod"]) or t["kod"], "etiket": t["etiket"], "tek": t["kod"], "cift": t["kod"]})
+            yalniz_ciftli += ciftli
         else:
             for t in tekli:
                 ozeller.append({"kod": t["kod"], "etiket": t["etiket"] + " VER"})
+    # Tek basina kalan iki satirli tur: ana bantla ayni yerde duruyorsa banttir (SAG DSF, UZUN gibi),
+    # baska yerde duruyorsa kendi butonu olan ayri grafiktir (isim + unvan, telefon gibi).
+    normal = next((b for b in bantlar if b["anahtar"] == ""), None)
+    normal_yeri = next((t["ust_yol"] for t in turler if normal and t["kod"] == normal["tek"]), None)
+    for t in yalniz_ciftli:
+        if normal_yeri is None or t["ust_yol"] == normal_yeri:
+            bantlar.append({"anahtar": _anahtar(ad(t)) or t["kod"], "etiket": t["etiket"], "tek": t["kod"], "cift": t["kod"]})
+        else:
+            ozeller.append({"kod": t["kod"], "etiket": t["etiket"] + " VER"})
     # NORMAL bant basa
     bantlar.sort(key=lambda b: (b["anahtar"] != "", b["etiket"]))
     if not any(b["anahtar"] == "" for b in bantlar):
-        sorular.append("NORMAL bant bulunamadi (TEK/CIFT ciftini taniyamadim). Ana tekli/ciftli KJ hangisi?")
+        sorular.append("Ana KJ bandını bulamadım. Sağdaki listede BANT bölümünde, her zaman kullandığınız "
+                       "normal bandın satırındaki \"ana bant\" seçeneğini işaretleyin.")
 
     kulakciklar = [{"anahtar": _anahtar(k["kod"]) or k["kod"], "etiket": _etiket(_anahtar(k["kod"]) or k["kod"]).replace("4 5G", "4.5G"),
                     "giris": k["giris"], "cikis": k["cikis"]}
@@ -166,15 +217,16 @@ def analiz_et(model: dict) -> dict:
     ogeler = [{"anahtar": o["kod"].lower(), "etiket": o["etiket"], "giris": o["giris"], "cikis": o["cikis"]}
               for o in gruplar if o["sinif"] == "oge"]
     if ogeler:
-        sorular.append("Metinsiz grafikler (" + ", ".join(o["etiket"] for o in ogeler) + ") ayri VER/AL olarak eklendi. "
-                       "Bunlardan KJ ile birlikte girip cikan kulakcik olanlar var mi?")
+        sorular.append("Yazısı olmayan grafikler (" + ", ".join(o["etiket"] for o in ogeler) + ") için ayrı VER ve AL butonu konuyor. "
+                       "Böyle kalabilir. Bunlardan biri KJ ile birlikte girip çıkıyorsa (4.5G, SKYPE gibi bir kulakçıksa) "
+                       "listede sağındaki seçimi \"kulakçık\" yapın.")
     if not detay_var:
         sorular.insert(0, "Tarama --details olmadan yapilmis: metin ve gorunurluk bilgisi yok, siniflandirma eksik olur. "
                           "vizscan.py --details ile yeniden tarayin.")
     kapali = [d["name_path"] for d in model["directors"] if d.get("open") is False and re.search(r"[0-9A-Za-z]", d["name"])]
     if kapali:
-        sorular.insert(0, f"{len(kapali)} director Artist'te KAPALI (icerigi okunamadi): " + ", ".join(kapali[:12])
-                       + ("..." if len(kapali) > 12 else "") + ". Dallari acip kaydedin, yeniden tarayin.")
+        sorular.insert(0, f"{len(kapali)} director Artist'te kapalı olduğu için içi okunamadı: " + ", ".join(kapali[:12])
+                       + ("..." if len(kapali) > 12 else "") + ". Artist'te Stage panelinde bu dalları açıp sahneyi kaydedin, sonra yeniden tarayın.")
 
     return {
         "sahne": model["scene"]["name"],

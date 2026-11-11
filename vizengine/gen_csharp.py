@@ -103,6 +103,12 @@ def short_paths(containers: list[dict]) -> dict[str, str]:
     return out
 
 
+def tek_satir(s: str | None) -> str:
+    """Cok satirli metni tek satira indirir. C# // aciklamasini ve tablo hucrelerini bozan her tur
+    satir sonu (\\r, \\n, U+0085, U+2028, U+2029) ve sekme bosluga cevrilir."""
+    return " ".join(str(s or "").split())
+
+
 def _is_separator(name: str) -> bool:
     """Stage'deki gorsel ayirac director'lari: '-----', '______' gibi."""
     return bool(name) and not re.search(r"[0-9A-Za-z]", name)
@@ -163,7 +169,7 @@ def render_csharp(model: dict, namespace: str = "VizScenes") -> str:
         if c["_ambiguous"]:
             extra.append("TEKIL DEGIL: sahnede ayni adla birden fazla; engine ilk eslesene gider")
         if c.get("text"):
-            extra.append("text: " + c["text"].replace("\n", " ")[:60])
+            extra.append("text: " + tek_satir(c["text"])[:60])
         if c.get("plugins"):
             extra.append(", ".join(c["plugins"][:3]))
         note = ("  // " + " | ".join(extra)) if extra else ""

@@ -19,7 +19,7 @@ namespace __NS__
         public int GeneralDelay { get; set; } = 40;
         public bool FasterSend { get; set; } = false;
 
-        public string KJ_Scenes { get; set; } = "__SAHNE__";
+        public string KJ_Scenes { get; set; } = KjTipleri.SahneYolu;
         public Dictionary<string, string> Kelebekler { get; } = new Dictionary<string, string>();
 
         public KjListesi Kj { get; private set; } = new KjListesi();

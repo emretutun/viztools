@@ -21,6 +21,11 @@ def build_scene_model(cli: VizClient, layer: str = "MAIN_SCENE",
                       details: bool = False, progress=None) -> dict:
     """progress: opsiyonel geri cagri progress(yapilan, toplam) (detay okuma sirasinda)."""
     scene_name = cli.try_send(f"{layer}*NAME GET") or "?"
+    # Sahnenin Graphic Hub yolu: "SCENE*KLASOR/ALT/SAHNE" doner; uygulama bunu "/KLASOR/ALT/SAHNE" olarak kullanir.
+    konum = (cli.try_send(f"{layer}*LOCATION_PATH GET") or "").strip()
+    if konum.upper().startswith("SCENE*"):
+        konum = konum[6:]
+    scene_path = ("/" + konum.strip("/")) if konum and not konum.startswith("#") else ""
     tree_raw = cli.tree_raw(layer)
     stage_raw = cli.stage_raw(layer)
     flat_directors = cli.try_send(f"{layer}*STAGE*DIRECTOR GET") or ""
@@ -82,10 +87,13 @@ def build_scene_model(cli: VizClient, layer: str = "MAIN_SCENE",
         for i, c in enumerate(containers, 1):
             if progress and (i % 10 == 0 or i == len(containers)):
                 progress(i, len(containers))
-            act = cli.try_send(f"{layer}*TREE*{c.name_path}*ACTIVE GET")
+            # Numarayla (#id) sorgula: ad yolu, ayni adli kardes container'larda ilk eslesene gider
+            # ve digerlerinin metni/aktifligi okunamaz. Numara yoksa ad yoluna dus.
+            hedef = f"#{c.id}" if isinstance(c.id, int) and c.id >= 0 else c.name_path
+            act = cli.try_send(f"{layer}*TREE*{hedef}*ACTIVE GET")
             if act is not None:
                 c.active = act.strip() == "1"
-            txt = cli.try_send(f"{layer}*TREE*{c.name_path}*GEOM*TEXT GET")
+            txt = cli.try_send(f"{layer}*TREE*{hedef}*GEOM*TEXT GET")
             if txt is not None:
                 texts[c.name_path] = txt
 
@@ -98,7 +106,7 @@ def build_scene_model(cli: VizClient, layer: str = "MAIN_SCENE",
 
     return {
         "scene": {
-            "name": scene_name, "layer": layer, "on_air": on_air,
+            "name": scene_name, "path": scene_path, "layer": layer, "on_air": on_air,
             "scanned_at": _dt.datetime.now().isoformat(timespec="seconds"),
             "container_count": len(containers), "director_count": len(directors),
         },
@@ -181,7 +189,7 @@ def render_markdown(model: dict) -> str:
     def walk(nodes, indent=0):
         for c in nodes:
             act = "" if c["active"] is None else ("  (aktif)" if c["active"] else "  (PASIF)")
-            txt = f'  text="{c["text"]}"' if c.get("text") else ""
+            txt = f'  text="{" ".join(str(c["text"]).split())}"' if c.get("text") else ""
             plg = f"  [{', '.join(c['plugins'])}]" if c.get("plugins") else ""
             md.append(f"{'  ' * indent}- **{c['name']}**  `{c['name_path']}`  #{c['id']}{act}{txt}{plg}")
             walk(c["children"], indent + 1)

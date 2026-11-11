@@ -238,7 +238,8 @@ class Handler(BaseHTTPRequestHandler):
             ad = m["scene"]["name"]
             return self._json({
                 "sahne_adi": ad,
-                "sahne_yolu": _load_state().get("sahne_yollari", {}).get(ad, ""),
+                "sahne_yolu": m["scene"].get("path") or _load_state().get("sahne_yollari", {}).get(ad, ""),
+                "yol_engineden": bool(m["scene"].get("path")),
                 "liste": U.kalemler(m, an),
                 "sorular": an["sorular"],
                 "uygulamalar": U.mevcut_uygulamalar(),

@@ -53,7 +53,8 @@ def sahneyi_oku(a) -> dict:
 def main():
     ap = argparse.ArgumentParser(description="Sahneden Viz reji WinForms uygulamasi")
     ap.add_argument("--ad", help="uygulama adi (yeni uygulamada zorunlu), orn. \"NTR Bu Sabah\"")
-    ap.add_argument("--sahne", required=True, help="KJ sahnesinin Graphic Hub yolu, orn. /SHOW_TV_2025/REJI/X/KJ/KJ_TUM_V1")
+    ap.add_argument("--sahne", help="KJ sahnesinin Graphic Hub yolu. Canli taramada gerekmez (engine'den okunur); "
+                                    ".via ya da eski taramada yazin, orn. /SHOW_TV_2025/REJI/X/KJ/KJ_TUM_V1")
     ap.add_argument("--hedef", required=True, help="cozum klasoru (yeni: bos ya da olmayan)")
     ap.add_argument("--kelebek", help="kelebek sahnelerinin klasoru (ops.)")
     ap.add_argument("--namespace", help="C# namespace (verilmezse addan)")
@@ -75,6 +76,18 @@ def main():
         s = model["scene"]
         print(f"Sahne: {s['name']}  ({s['container_count']} container, {s['director_count']} director)")
         print("Tarama:", jp)
+
+        if s.get("path"):
+            if a.sahne and a.sahne.rstrip("/").lower() != s["path"].lower():
+                print(f"NOT: --sahne '{a.sahne}' yerine engine'in bildirdigi yol kullaniliyor: {s['path']}")
+            a.sahne = s["path"]
+            print("Sahne yolu (engine'den):", a.sahne)
+        elif not a.sahne:
+            eski_plan = plan_oku(hedef) if a.guncelle else None
+            if eski_plan:
+                a.sahne = eski_plan["sahne"]
+            else:
+                raise UretimHatasi("Bu taramada sahne yolu yok (.via ya da eski tarama). --sahne ile Graphic Hub yolunu yazin.")
 
         # 2) analiz
         an = analiz_et(model)

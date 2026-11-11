@@ -4,8 +4,8 @@
     {
       "name": "viztools-web",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["vizscan_web.py", "--no-open", "--port", "8765"],
-      "port": 8765
+      "runtimeArgs": ["vizscan_web.py", "--no-open", "--port", "8766"],
+      "port": 8766
     }
   ]
 }

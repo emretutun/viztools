@@ -22,7 +22,8 @@ Sahne degisince ayni uygulamayi gunceller; rejinin kararlari ve elle yapilan ekl
 2. `viztools.bat`'a cift tiklayin. Tarayicida viztools acilir.
 3. Soldan **Sahneyi tara** (engine acikken), ya da `.via` dosyasi / onceki tarama secin.
 4. **Reji uygulamasi** sekmesine gecin.
-   - Yeni: uygulama adini ve KJ sahnesinin Graphic Hub yolunu yazin.
+   - Yeni: uygulama adini yazin. Sahnenin Graphic Hub yolu engine'den kendiliginden okunur
+     (yalnizca .via dosyasiyla calisirken elle yazilir).
    - Sagdaki listede panelde ne cikacagini secin: bantlar, kulakciklar, ozel butonlar, ogeler.
      Etiketi duzeltebilir, bir kalemi kulakcik / oge (ya da bant / ozel buton) olarak degistirebilirsiniz.
    - **Uygulamayi uret ve derle**. Bitince "Visual Studio'da ac".

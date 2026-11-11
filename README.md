@@ -37,7 +37,8 @@ Ek paket kurmak gerekmez.
 2. **`viztools.bat`** dosyasına çift tıklayın. Tarayıcıda viztools açılır.
 3. Soldan **Sahneyi tara** düğmesine basın. (Engine kapalıysa bir `.via` dosyası da açılabilir.)
 4. **Reji uygulaması** sekmesine geçin:
-   - Uygulama adını ve KJ sahnesinin Graphic Hub yolunu yazın.
+   - Uygulama adını yazın. Sahnenin Graphic Hub yolu engine'den kendiliğinden okunur
+     (yalnızca `.via` dosyasıyla çalışırken elle yazılır).
    - Sağdaki listeden panelde çıkacakları seçin, etiketleri düzeltin.
    - **Uygulamayı üret ve derle** düğmesine basın.
 5. Bitince **Visual Studio'da aç**. Uygulama `C:\Users\<kullanıcı>\source\repos\` altındadır.
@@ -225,8 +226,8 @@ Kapalı (expand edilmemiş) director dalları engine cevabında görünmez; tara
 - `TREE GET`: `{yol id isim [bayrak]}` düz liste. Sondaki sayı Artist ağacında dalın
   **açık/kapalı** olmasıdır, aktiflik DEĞİLDİR; yapraklarda yoktur. Aktiflik `*ACTIVE GET` ile okunur.
 - `STAGE GET`: düz liste, hiyerarşi yoldan kurulur (`6`, `6/4`, `6/4/0`). Director ve
-  CONTAINER satırlarında isimden sonraki ilk sayı **açık (1) / kapalı (0)**; kapalıysa
-  altındaki satırlar hiç gelmez. Kapalı dallar şablonda "KAPALI (okunamadı)" olarak işaretlenir.
+  CONTAINER satırlarında isimden sonraki ilk sayı **açık (1) / kapalı (0) / boş (-1)**; kapalıysa
+  altındaki satırlar hiç gelmez. `-1` altı boş director'dır (açılacak bir şey yok), kapalı sayılmaz. Kapalı dallar şablonda "KAPALI (okunamadı)" olarak işaretlenir.
 - Engine UTF-8 gönderir; Türkçe karakterler doğru çözülür.
 
 ## Şablon (.md) içinde ne var

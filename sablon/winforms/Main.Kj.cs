@@ -314,10 +314,12 @@ namespace __NS__
         private async void btn_cift_ver_Click(object? sender, EventArgs e) =>
             await KjVerAsync(KjTipleri.Coz(SeciliBantAnahtari(), cift: true), btn_cift_ver, cift: true, kulakcikla: true);
 
-        /// <summary>Ozel tur butonlarinin ortak olayi (Tag = tur kodu). Tek satir verilir, kulakcik eklenmez.</summary>
+        /// <summary>Ozel tur butonlarinin ortak olayi (Tag = tur kodu). Turun iki metin alani varsa iki satir da verilir; kulakcik eklenmez.</summary>
         private async void btn_ozel_ver_Click(object? sender, EventArgs e)
         {
-            if (sender is Button b) await KjVerAsync(KjTipleri.Bul(b.Tag as string), b, cift: false, kulakcikla: false);
+            if (sender is not Button b) return;
+            var tip = KjTipleri.Bul(b.Tag as string);
+            await KjVerAsync(tip, b, cift: tip?.CiftSatir ?? false, kulakcikla: false);
         }
 
         private IEnumerable<Button> OzelButonlari() =>

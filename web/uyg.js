@@ -17,7 +17,12 @@ async function uygYukle() {
     const r = await api("/api/uygulama/analiz");
     UYG.sahneDamga = MODEL.scene.scanned_at;
     UYG.sorular = r.sorular; UYG.uygulamalar = r.uygulamalar; UYG.repos = r.repos; UYG.analizListe = r.liste;
-    if (!$("#uSahne").value) $("#uSahne").value = r.sahne_yolu || "";
+    UYG.sahneAdi = r.sahne_adi;
+    UYG.yolEngineden = !!r.yol_engineden;
+    if (UYG.yolEngineden || !$("#uSahne").value) $("#uSahne").value = r.sahne_yolu || "";
+    $("#uSahne").readOnly = UYG.yolEngineden;
+    $("#uSahne").placeholder = "/KLASOR/ALT_KLASOR/KJ/" + r.sahne_adi;
+    sahneYoluDuzelt();
     const sel = $("#uMevcut");
     sel.innerHTML = r.uygulamalar.length
       ? r.uygulamalar.map(u => `<option value="${esc(u.hedef)}">${esc(u.uygulama)}  ·  ${esc(u.sahne_adi)}</option>`).join("")
@@ -44,12 +49,28 @@ async function mevcutKontrol() {
   try {
     const r = await api("/api/uygulama/kontrol", { hedef });
     UYG.liste = r.liste; UYG.meta = r.plan;
-    $("#uSahne").value = r.plan.sahne || $("#uSahne").value;
+    if (!UYG.yolEngineden) $("#uSahne").value = r.plan.sahne || $("#uSahne").value;
+    sahneYoluDuzelt();
+    if (UYG.yolEngineden && r.plan.sahne && r.plan.sahne.toLowerCase() !== $("#uSahne").value.toLowerCase())
+      $("#uSahneIpucu").textContent = `Uygulamadaki yol farklıydı (${r.plan.sahne}). Güncellemede engine'den okunan yol yazılacak.`;
     $("#uKelebek").value = r.plan.kelebek_klasoru || "";
     const yeni = r.liste.kalemler.filter(x => x.durum === "yeni").length, yok = r.liste.kalemler.filter(x => x.durum === "yok").length;
     $("#uMevcutBilgi").textContent = `${hedef}  ·  sahnede yeni: ${yeni}  ·  sahnede bulunamayan: ${yok}`;
     uygCiz();
   } catch (e) { toast(e.message, true); }
+}
+
+/** Yol sahnenin kendisini gostermeli: klasor yazildiysa sonuna sahne adini ekler. */
+function sahneYoluDuzelt() {
+  const kutu = $("#uSahne"), ad = UYG.sahneAdi || "";
+  if (UYG.yolEngineden) { $("#uSahneIpucu").textContent = "Engine'den okundu. Elle yazmanız gerekmez."; return; }
+  let v = kutu.value.trim().split(String.fromCharCode(92)).join("/").replace(/\/+$/, "");
+  if (v && !v.startsWith("/")) v = "/" + v;
+  let eklendi = false;
+  if (v && ad && !ad.startsWith("#") && v.split("/").pop().toLowerCase() !== ad.toLowerCase()) { v += "/" + ad; eklendi = true; }
+  kutu.value = v;
+  $("#uSahneIpucu").textContent = !ad ? "" : eklendi ? `Sahne adı sona eklendi. Yol sahnenin kendisini göstermeli, klasörü değil.`
+    : `Artist'te sol altta yazan yolun tamamı. Sonu sahne adıyla biter: …/${ad}`;
 }
 
 // ---------------------------------------------------------------- cizim
@@ -69,6 +90,17 @@ function grupDegistir(x, yeni) {
   if (x.grup === "ozel" && yeni === "bant") x.veri = { anahtar: v.kod, etiket: v.etiket, tek: v.kod, cift: v.kod };
   else if (x.grup === "bant" && yeni === "ozel") x.veri = { kod: v.tek, etiket: v.etiket };
   x.grup = yeni;
+}
+
+/** x'i ana (NORMAL) bant yapar; onceki ana bant siradan bir banda doner. */
+function anaBantYap(x) {
+  const anahtarYap = (v) => (v.etiket || v.tek).toLocaleUpperCase("tr-TR").replace(/[ÇĞİÖŞÜ]/g, c => ({ "Ç": "C", "Ğ": "G", "İ": "I", "Ö": "O", "Ş": "S", "Ü": "U" }[c]))
+    .replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, "") || v.tek;
+  UYG.liste.kalemler.filter(k => k.grup === "bant" && k.veri.anahtar === "" && k !== x).forEach(k => {
+    if (k.veri.etiket === "NORMAL") k.veri.etiket = k.veri.tek.replace(/_/g, " ");
+    k.veri.anahtar = anahtarYap(k.veri);
+  });
+  x.veri.anahtar = ""; x.secili = true;
 }
 
 function uygCiz() {
@@ -101,9 +133,16 @@ function kalemSatiri(x) {
   et.onblur = () => (et.value = x.veri.etiket);
   r.appendChild(et);
   const kod = el("span", "kod", kodMetni(x)); kod.title = kodMetni(x); r.appendChild(kod);
-  const tag = normal ? el("span", "tag sabit", "zorunlu")
-    : x.durum === "yeni" ? el("span", "tag yeni", "sahnede yeni")
-    : x.durum === "yok" ? el("span", "tag yok", "sahnede yok") : el("span");
+  const tag = el("span", "tags");
+  if (x.durum === "yeni") tag.appendChild(el("span", "tag yeni", "sahnede yeni"));
+  if (x.durum === "yok") tag.appendChild(el("span", "tag yok", "sahnede yok"));
+  if (x.grup === "bant" && x.durum !== "yok") {
+    // ana bant: TEKLI / CIFTLI KJ VER'in hicbir sey secilmeden verdigi bant. Tam bir tane olmali.
+    const lb = el("label", "ana" + (normal ? " secili" : "")), rd = el("input");
+    rd.type = "radio"; rd.name = "anaBant"; rd.checked = normal;
+    rd.onchange = () => { anaBantYap(x); uygCiz(); };
+    lb.appendChild(rd); lb.appendChild(document.createTextNode(" ana bant")); tag.appendChild(lb);
+  }
   r.appendChild(tag);
   const izin = izinliGruplar(x);
   if (izin.length > 1) {
@@ -120,7 +159,7 @@ function planKur() {
   const sec = UYG.liste.kalemler.filter(x => x.secili);
   const al = (g) => sec.filter(x => x.grup === g).map(x => Object.assign({}, x.veri));
   const plan = { bantlar: al("bant"), kulakciklar: al("kulakcik"), ozeller: al("ozel"), ogeler: al("oge") };
-  if (!plan.bantlar.some(b => b.anahtar === "")) throw new Error("NORMAL bant sahnede bulunamadı. Sahneyi kontrol edin.");
+  if (!plan.bantlar.some(b => b.anahtar === "")) throw new Error("Ana bant seçilmemiş. BANT bölümünde normal bandın satırındaki \"ana bant\" seçeneğini işaretleyin.");
   const anah = plan.bantlar.map(b => b.anahtar);
   if (new Set(anah).size !== anah.length) throw new Error("Aynı bant iki kez seçilmiş: " + anah.filter((a, i) => anah.indexOf(a) !== i).join(", "));
   if ([...plan.bantlar, ...plan.kulakciklar, ...plan.ozeller, ...plan.ogeler].some(x => !String(x.etiket).trim()))
@@ -133,6 +172,7 @@ function planKur() {
 async function uret() {
   try {
     if (!UYG.liste) throw new Error("Önce bir sahne yükleyin.");
+    sahneYoluDuzelt();
     const sahne = $("#uSahne").value.trim();
     if (!sahne.startsWith("/")) throw new Error("KJ sahnesinin Graphic Hub yolunu yazın (/ ile başlar).");
     const plan = planKur();
@@ -185,5 +225,6 @@ $("#uAd").oninput = () => {
 };
 $("#uHedef").oninput = () => (UYG.hedefElle = !!$("#uHedef").value.trim());
 $("#btnUret").onclick = uret;
+$("#uSahne").onblur = sahneYoluDuzelt;
 $("#btnKlasor").onclick = () => api("/api/uygulama/ac?what=klasor&hedef=" + encodeURIComponent(UYG.sonHedef || "")).catch(e => toast(e.message, true));
 $("#btnCozum").onclick = () => api("/api/uygulama/ac?what=cozum&hedef=" + encodeURIComponent(UYG.sonHedef || "")).catch(e => toast(e.message, true));

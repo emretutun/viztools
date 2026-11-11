@@ -21,7 +21,7 @@ import re
 import shutil
 import subprocess
 
-from .gen_csharp import ident, render_csharp, short_paths, class_name
+from .gen_csharp import ident, render_csharp, short_paths, class_name, tek_satir
 
 KOK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SABLON = os.path.join(KOK, "sablon", "winforms")
@@ -66,6 +66,21 @@ def dogrula(plan: dict, model: dict) -> list[str]:
     tam = {c["name_path"] for c in model["containers"]}
     kodlar = {t["kod"] for t in plan["turler"]}
 
+    # Sahne yolu sahnenin KENDISINI gostermeli (klasoru degil): son parca sahne adi olmali.
+    sahne_adi = model["scene"]["name"]
+    yol = str(plan.get("sahne", "")).strip().rstrip("/")
+    gercek = str(model["scene"].get("path") or "").rstrip("/")
+    if gercek and yol.lower() != gercek.lower():
+        hatalar.append(f"Sahne yolu yanlis: '{yol}'. Engine'de bu sahnenin yolu: '{gercek}'")
+    elif gercek:
+        pass
+    elif not yol.startswith("/"):
+        hatalar.append("Sahne yolu / ile baslamali (Graphic Hub yolu), orn. /KLASOR/ALT/KJ/" + sahne_adi)
+    elif re.search(r"[0-9A-Za-z]", sahne_adi) and not sahne_adi.startswith("#") \
+            and yol.rsplit("/", 1)[-1].lower() != sahne_adi.lower():
+        oneri = yol + "/" + sahne_adi
+        hatalar.append(f"Sahne yolu sahne adiyla bitmiyor: '{yol}'. Klasor degil sahnenin kendisi yazilmali: '{oneri}'")
+
     def dir_var(y, ne):
         if y not in dirs:
             hatalar.append(f"{ne}: director sahnede yok: {y}")
@@ -102,7 +117,7 @@ def dogrula(plan: dict, model: dict) -> list[str]:
 def _cs(s: str | None) -> str:
     if s is None:
         return "null"
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return '"' + tek_satir(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def sahne_cs(plan: dict) -> str:
@@ -143,11 +158,11 @@ def ornek_liste(plan: dict, model: dict) -> dict:
     for b in plan["bantlar"]:
         for kod in dict.fromkeys([b["tek"], b["cift"]]):
             t = turler[kod]
-            kjler.append({"tur": kod, "kulakcik": "", "satir1": metin.get(t["ust"], t["etiket"]).replace("\n", " "),
-                          "satir2": metin.get(t["alt"], "").replace("\n", " ") if t.get("alt") else ""})
+            kjler.append({"tur": kod, "kulakcik": "", "satir1": tek_satir(metin.get(t["ust"], t["etiket"])),
+                          "satir2": tek_satir(metin.get(t["alt"], "")) if t.get("alt") else ""})
     for o in plan["ozeller"]:
         t = turler[o["kod"]]
-        kjler.append({"tur": o["kod"], "kulakcik": "", "satir1": metin.get(t["ust"], t["etiket"]).replace("\n", " "), "satir2": ""})
+        kjler.append({"tur": o["kod"], "kulakcik": "", "satir1": tek_satir(metin.get(t["ust"], t["etiket"])), "satir2": ""})
     return {"bolumler": [{"baslik": "Örnek (sahneden)", "kjler": kjler}]}
 
 
@@ -340,6 +355,30 @@ Ayrinti: viztools deposundaki `vizrt-reji` skill'i.
 """
 
 
+def sahne_yolunu_guncelle(proje: str, plan: dict) -> list[str]:
+    """Guncellemede: uygulamanin calisirken okudugu sahne yolunu (ShowData/scenes.txt) plana esitler."""
+    notlar = []
+    sahne_dir, sahne_ad = plan["sahne"].rstrip("/").rsplit("/", 1)
+    sp = os.path.join(proje, "ShowData", "scenes.txt")
+    if os.path.exists(sp):
+        s = open(sp, encoding="utf-8").read()
+        yeni, n = re.subn(r"basepath[ \t]*=[^\n]*\n(\s*)KJ_Scenes[ \t]*=[^\n]*",
+                          lambda m: f"basepath = {sahne_dir}/\n{m.group(1)}KJ_Scenes = {sahne_ad}", s, count=1)
+        if n == 0:
+            notlar.append("UYARI: ShowData/scenes.txt icinde 'basepath' + 'KJ_Scenes' satirlari bulunamadi; sahne yolunu elle duzeltin: "
+                          + plan["sahne"])
+        elif yeni != s:
+            open(sp, "w", encoding="utf-8").write(yeni)
+            notlar.append("Sahne yolu guncellendi (ShowData/scenes.txt): " + plan["sahne"])
+    cp = os.path.join(proje, "CSceneDataController.cs")
+    if os.path.exists(cp):
+        s = open(cp, encoding="utf-8-sig").read()
+        yeni = re.sub(r'(public string KJ_Scenes \{ get; set; \} = )"[^"]*";', r"\1KjTipleri.SahneYolu;", s, count=1)
+        if yeni != s:
+            open(cp, "w", encoding="utf-8-sig").write(yeni)
+    return notlar
+
+
 # =========================================================================
 #  ANA AKIS
 # =========================================================================
@@ -405,6 +444,7 @@ def uret(plan_yolu: str, hedef: str, guncelle: bool = False, arayuz: bool = Fals
     else:
         if not os.path.isdir(proje):
             raise UretimHatasi(f"Proje klasoru yok: {proje} (yeni uygulama icin --guncelle olmadan calistirin)")
+        rapor += sahne_yolunu_guncelle(proje, plan)
         eski_plan = os.path.join(hedef, "kumanda.json")
         if os.path.exists(eski_plan):
             eski = json.load(open(eski_plan, encoding="utf-8"))

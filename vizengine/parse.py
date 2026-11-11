@@ -104,9 +104,10 @@ class StageNode:
 
     @property
     def is_open(self) -> bool | None:
-        """Director ve CONTAINER satirlarinda ilk sayi: 1 acik (alt satirlar geldi), 0 kapali."""
+        """Director ve CONTAINER satirlarinda ilk sayi: 1 acik (alt satirlar geldi), 0 kapali,
+        -1 yaprak (alti bos, acilacak bir sey yok; kapali DEGIL)."""
         if (self.is_director or self.is_container) and self.fields:
-            return self.fields[0] == "1"
+            return self.fields[0] != "0"
         return None
 
     def to_dict(self):
@@ -176,10 +177,11 @@ def parse_stage(raw: str) -> list[StageNode]:
 
 
 def director_is_open(node: StageNode) -> bool | None:
-    """Director satirindaki ilk sayi: 1 = Artist'te acik (alt satirlar geliyor), 0 = kapali."""
+    """Director satirindaki ilk sayi: 1 = Artist'te acik (alt satirlar geliyor), 0 = kapali,
+    -1 = bos director (alti yok). Yalnizca 0 'okunamadi' demektir."""
     if not node.is_director or not node.fields:
         return None
-    return node.fields[0] == "1"
+    return node.fields[0] != "0"
 
 
 def walk_stage(nodes: list[StageNode]):

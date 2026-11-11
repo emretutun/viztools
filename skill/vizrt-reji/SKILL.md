@@ -31,15 +31,16 @@ akislari kullan. Ikisi ayni plani (`kumanda.json`) ve ayni ureticiyi kullanir.
 
 ## Akis 1: yeni uygulama
 
-1. Kullanicidan al: uygulama adi (or. "NTR Bu Sabah"), KJ sahnesinin yolu
-   (or. `/SHOW_TV_2025/REJI/BU_SABAH/KJ/KJ_TUM_V13`), varsa kelebek klasoru.
+1. Kullanicidan al: uygulama adi (or. "NTR Bu Sabah"), varsa kelebek klasoru.
+   Sahnenin Graphic Hub yolunu SORMA ve tahmin etme: canli taramada engine'den okunur
+   (`MAIN_SCENE*LOCATION_PATH GET`). Yalnizca .via ya da eski tarama kullaniliyorsa `--sahne` ile iste.
    Hedef varsayilan: `%USERPROFILE%\source\repos\<Ad_alt_cizgili>`. Hedef bos olmali.
 2. Kullaniciya hatirlat: sahne Viz Artist'te acik olmali; Stage ve Scene Tree'de tum dallar
    acilip (Expand All) sahne kaydedilmis olmali. Kapali dallar okunamaz.
    Engine yoksa sahnenin `.via` arsivi de olur.
 3. Calistir:
    ```
-   python "__VIZTOOLS__\vizapp.py" --ad "NTR Yeni Program" --sahne /YOL/KJ_SAHNESI --hedef "%USERPROFILE%\source\repos\NTR_Yeni_Program" [--kelebek /YOL/KELEBEK]
+   python "__VIZTOOLS__\vizapp.py" --ad "NTR Yeni Program" --hedef "%USERPROFILE%\source\repos\NTR_Yeni_Program" [--kelebek /YOL/KELEBEK]
    ```
    Engine yerine: `--via dosya.via [--scene AD]`; onceki tarama: `--model "__VIZTOOLS__\scenes\X\X.json"`.
 4. Ciktidaki ozeti (kac bant, kulakcik, ozel tur, oge) ve SORULAR'i kullaniciya Turkce,
@@ -54,7 +55,7 @@ akislari kullan. Ikisi ayni plani (`kumanda.json`) ve ayni ureticiyi kullanir.
 
 Hedefte `kumanda.json` varsa uygulama viztools ile uretilmistir; o klasordeki `CLAUDE.md`'yi oku.
 ```
-python "__VIZTOOLS__\vizapp.py" --sahne /YOL/KJ_SAHNESI --hedef "<uygulama klasoru>" --guncelle
+python "__VIZTOOLS__\vizapp.py" --hedef "<uygulama klasoru>" --guncelle
 ```
 - Plan korunur. Sahneye bagli dosyalar (`KjTipleri.Sahne.cs`, `VizScenes\*.cs`) yenilenir, derlenir.
 - "SAHNEDE YENI" satirlari: sahnede olup planda olmayan grafikler. Rejiye sor, eklenecekse
@@ -92,6 +93,16 @@ Etiketler panelde gorunen yazidir; Turkce buyuk harf ve kullanicinin dedigi yazi
 `vizuret.py` plani sahneye karsi dogrular: olmayan director/container varsa uretmez ve listeler.
 
 ## Bilinen tuzaklar
+
+- Uygulama "invalid sublocation" / "invalid location SCENE" aliyorsa sahne yolu yanlistir (klasor yazilmis
+  ya da arada olmayan bir klasor var). Sahne Artist'te acikken `vizapp.py --hedef <uygulama> --guncelle`
+  calistir: yol engine'den okunur, `ShowData/scenes.txt` de duzeltilir.
+- Ayni adli kardes container'lar (iki tane `TEXT` gibi): tarama her container'i numarasiyla (#id) okur,
+  bu yuzden metin alanlari kaybolmaz. Ama uygulama yazarken adla yazar; metin alaninin ADI sahnede
+  tekil olmali (analiz "birden fazla yerde geciyor" diye uyarir).
+- Engine bos director icin -1, kapali dal icin 0 dondurur; yalnizca 0 "okunamadi" demektir.
+- Cift yuvali sahneler (X_1 / X_2): uygulama 1. yuvayi kullanir.
+- Arac kodu degistikten sonra acik viztools penceresi eski kodla calisir; kapatip viztools.bat'i yeniden ac.
 
 - Engine'den `SCENE LOAD` asenkrondur ve az once yazilan metinleri ezer: uygulama sahneyi Reji
   baglantisinda bir kez yukler (bu sablonda hazir; degistirme).

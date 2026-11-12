@@ -15,6 +15,20 @@ namespace __NS__
         public static void SetImagePath(this Vizrt viz, string scene, string containerPath, string imagePath)
             => viz.Send("SCENE*" + scene + "*TREE*" + containerPath + "*IMAGE SET \"" + imagePath + "\"");
 
+        /// <summary>Resim dosyasi (canli uygulamalardaki gibi tirnaksiz; dosya adinda bosluk olmamali).</summary>
+        public static void SetImageFile(this Vizrt viz, string scene, string containerPath, string dosya)
+            => viz.Send("SCENE*" + scene + "*TREE*" + containerPath + "*IMAGE SET " + dosya);
+
+        public static void SetImageClipFile(this Vizrt viz, string scene, string containerPath, string dosya)
+            => viz.Send("SCENE*" + scene + "*TREE*" + containerPath + "*FUNCTION*imageClip*imageLoadFileName SET " + dosya);
+
+        /// <summary>Arka plan klibi (kelebek BG$softclip).</summary>
+        public static void SetSoftClipFile(this Vizrt viz, string scene, string containerPath, string dosya)
+            => viz.Send("SCENE*" + scene + "*TREE*" + containerPath + "*FUNCTION*SoftClip*clipFile SET " + dosya);
+
+        public static void StartReverse(this Vizrt viz, string scene, string directorPath)
+            => viz.Send("SCENE*" + scene + "*STAGE*DIRECTOR*" + directorPath + " START REVERSE");
+
         /// <summary>Director'u (tam yol, orn. "$KJ$TEK_KJ$IN") baslatir.</summary>
         public static void Start(this Vizrt viz, string scene, string directorPath)
             => viz.Send("SCENE*" + scene + "*STAGE*DIRECTOR*" + directorPath + " START");

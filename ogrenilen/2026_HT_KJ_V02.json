@@ -1,0 +1,77 @@
+{
+  "aciklama": "Canli NTR HT uygulamasinin kodundan ogrenildi (yalnizca okunarak).",
+  "ozeller": {
+    "ISIMLIK": {
+      "etiket": "İSİM VER"
+    },
+    "TELEFON": {
+      "etiket": "TELEFON VER"
+    }
+  },
+  "ogeler": {
+    "corner": {
+      "etiket": "LOGO VER"
+    },
+    "urun_yerlestirme": {
+      "etiket": "ÜRÜN YERLEŞTİRME"
+    },
+    "sondk_telefon": {
+      "etiket": "FOTOLU TEL"
+    },
+    "sol_ust_text": {
+      "etiket": "ÖZEL HABER LOGO"
+    }
+  },
+  "fon": {
+    "secenekler": [
+      "STANDART",
+      "AKŞAM",
+      "SPOR",
+      "EKONOMİ",
+      "SEPHIA",
+      "TURUNCU",
+      "BENCE",
+      "DÜNYADA NASIL",
+      "29 EKİM"
+    ],
+    "varsayilan": "STANDART",
+    "ayarlar": [
+      {
+        "hedef": "UST_KJ_DEGIS_1",
+        "tip": "imageclip",
+        "yol": "$KJ_ISIMLIK_TELEFON_GROUP$KJ$kj_sequences$ALTBANT_IMG_CLIP",
+        "degerler": {
+          "STANDART": "D:/MATERIALS_HT/2026/Reji/KJ/_STANDART/ALTBANT/kirmizi_altbant_00000.vbn",
+          "AKŞAM": "D:/MATERIALS_HT/2026/Reji/KJ/_AKSAM/MAVI/ALTBANT/mavi_altbant_00000.vbn",
+          "SPOR": "D:/MATERIALS_HT/2026/Reji/KJ/_SPOR/ALTBANT/teal_altbant_00000.vbn",
+          "EKONOMİ": "D:/MATERIALS_HT/2026/Reji/KJ/_EKONOMI/ALTBANT/mavi_2_altbant_00000.vbn",
+          "SEPHIA": "D:/MATERIALS_HT/2026/Reji/KJ/_AKSAM/SEPHIA/ALTBANT/sephia_altbant_00000.vbn",
+          "TURUNCU": "D:/MATERIALS_HT/2026/Reji/KJ/_TURUNCU/ALTBANT/turuncu_altbant_00000.vbn",
+          "BENCE": "D:/MATERIALS_HT/2026/Reji/KJ/_BENCE/ALTBANT/bence_altbant_00000.vbn",
+          "DÜNYADA NASIL": "D:/MATERIALS_HT/2026/Reji/KJ/_DUNYADA_NASIL/ALTBANT/dunyada_nasil_altbant_00000.vbn",
+          "29 EKİM": "D:/MATERIALS_HT/2026/Reji/KJ/_29_EKIM/ALTBANT/29ekim_altbant_00000.vbn"
+        }
+      },
+      {
+        "hedef": "UST_KJ_DEGIS_1",
+        "tip": "imageclip",
+        "yol": "$KJ_ISIMLIK_TELEFON_GROUP$KJ$kj_sequences$ALT_SATIR_BANT_IMG_CLIP",
+        "degerler": {
+          "STANDART": "D:/MATERIALS_HT/2026/Reji/KJ/_STANDART/ALT_SATIR_BANT/kirmizi_alt_satir_bant_00000.vbn",
+          "AKŞAM": "D:/MATERIALS_HT/2026/Reji/KJ/_AKSAM/MAVI/ALT_SATIR_BANT/mavi_alt_satir_bant_00000.vbn",
+          "SPOR": "D:/MATERIALS_HT/2026/Reji/KJ/_SPOR/ALT_SATIR_BANT/teal_alt_satir_bant_00000.vbn",
+          "EKONOMİ": "D:/MATERIALS_HT/2026/Reji/KJ/_EKONOMI/ALT_SATIR_BANT/mavi_2_alt_satir_bant_00000.vbn",
+          "SEPHIA": "D:/MATERIALS_HT/2026/Reji/KJ/_AKSAM/SEPHIA/ALT_SATIR_BANT/sephia_alt_satir_bant_00000.vbn",
+          "TURUNCU": "D:/MATERIALS_HT/2026/Reji/KJ/_TURUNCU/ALT_SATIR_BANT/turuncu_alt_satir_bant_00000.vbn",
+          "BENCE": "D:/MATERIALS_HT/2026/Reji/KJ/_STANDART/ALT_SATIR_BANT/kirmizi_alt_satir_bant_00000.vbn",
+          "DÜNYADA NASIL": "D:/MATERIALS_HT/2026/Reji/KJ/_STANDART/ALT_SATIR_BANT/kirmizi_alt_satir_bant_00000.vbn",
+          "29 EKİM": "D:/MATERIALS_HT/2026/Reji/KJ/_29_EKIM/ALT_SATIR_BANT/29ekim_alt_satir_bant_00000.vbn"
+        }
+      }
+    ]
+  },
+  "kelebek_ayar": {
+    "katman": "BACK",
+    "klip": "D:/MATERIALS_HT/BACKGROUND/2026_HT_BG_04.avi"
+  }
+}

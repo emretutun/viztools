@@ -93,9 +93,14 @@ def build_scene_model(cli: VizClient, layer: str = "MAIN_SCENE",
             act = cli.try_send(f"{layer}*TREE*{hedef}*ACTIVE GET")
             if act is not None:
                 c.active = act.strip() == "1"
-            txt = cli.try_send(f"{layer}*TREE*{hedef}*GEOM*TEXT GET")
-            if txt is not None:
-                texts[c.name_path] = txt
+            # Yazi yalnizca geometrisi TEXT olan container'dan okunur; digerlerine GEOM*TEXT sormak
+            # engine konsoluna her container icin "failed to process command" yazdirir.
+            if cli.try_send(f"{layer}*TREE*{hedef}*GEOM GET"):
+                tip = cli.try_send(f"{layer}*TREE*{hedef}*GEOM*TYPE GET") or ""
+                if "TEXT" in tip.upper():
+                    txt = cli.try_send(f"{layer}*TREE*{hedef}*GEOM*TEXT GET")
+                    if txt is not None:
+                        texts[c.name_path] = txt
 
     def cdict(c: Container):
         d = c.to_dict()

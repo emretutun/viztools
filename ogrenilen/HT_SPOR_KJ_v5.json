@@ -1,0 +1,142 @@
+{
+  "aciklama": "Canli NTR HTSPOR uygulamasinin kodundan ogrenildi (yalnizca okunarak).",
+  "turler": {
+    "KJ_CIFT_1": {
+      "yuvalar": null
+    },
+    "TELEFON_FOTOLU": {
+      "resim": {
+        "container": "$TEL_FOTO_IMAGE_SEC",
+        "varsayilan": "D:\\MATERIALS_HTS\\TELEFON\\telefon.png"
+      }
+    }
+  },
+  "ozeller": {
+    "KJ_ISIM_1": {
+      "etiket": "İSİM VER"
+    },
+    "TELEFON_1": {
+      "etiket": "TELEFON VER"
+    },
+    "TELEFON_FOTOLU": {
+      "etiket": "FOTOLU TEL VER"
+    }
+  },
+  "ogeler": {
+    "program_logo": {
+      "etiket": "LOGO VER",
+      "metin": {
+        "container": "$logo_text"
+      },
+      "kj_ile": false
+    }
+  },
+  "cikar": {
+    "ozeller": [
+      "YAZI_SOL"
+    ],
+    "turler": [
+      "YAZI_SOL"
+    ]
+  },
+  "ekle": {
+    "ogeler": [
+      {
+        "anahtar": "yazi_sol",
+        "etiket": "ÜRÜN YERLEŞTİRME",
+        "giris": "$YAZI_SOL",
+        "cikis": "$YAZI_SOL_OUT",
+        "oto_al_sn": 10,
+        "bandi_al": true
+      }
+    ]
+  },
+  "fon": {
+    "secenekler": [
+      "TEAL",
+      "SD KIRMIZI",
+      "KIRMIZI",
+      "MOR",
+      "TURUNCU",
+      "MULTICOLOR",
+      "DK MULTICOLOR",
+      "DK SARI"
+    ],
+    "varsayilan": "TEAL",
+    "ayarlar": [
+      {
+        "hedef": "altbant",
+        "tip": "imageclip",
+        "yol": "$ALTBANT_IMG_CLIP",
+        "degerler": {
+          "TEAL": "D:/MATERIALS_HTS/2025/Reji/KJ/TEAL/ALTBANT/teal_altbant_00000.vbn",
+          "SD KIRMIZI": "D:/MATERIALS_HTS/2025/Reji/KJ/SD_KIRMIZI/ALTBANT/sd_kirmizi_altbant_00000.vbn",
+          "KIRMIZI": "D:/MATERIALS_HTS/2025/Reji/KJ/KIRMIZI/ALTBANT/kirmizi_altbant_00000.vbn",
+          "MOR": "D:/MATERIALS_HTS/2025/Reji/KJ/MOR/ALTBANT/mor_altbant_00000.vbn",
+          "TURUNCU": "D:/MATERIALS_HTS/2025/Reji/KJ/TURUNCU/ALTBANT/turuncu_altbant_00000.vbn",
+          "MULTICOLOR": "D:/MATERIALS_HTS/2025/Reji/KJ/MULTICOLORED/ALTBANT/multicolored_altbant_00000.vbn",
+          "DK MULTICOLOR": "D:/MATERIALS_HTS/2025/Reji/KJ/DUNYA_KUPASI_MULTICOLORED/ALTBANT/dunya_kupasi_multicolored_altbant_00000.vbn",
+          "DK SARI": "D:/MATERIALS_HTS/2025/Reji/KJ/DUNYA_KUPASI_SARI/ALTBANT/dunya_kupasi_sari_altbant_00000.vbn"
+        }
+      },
+      {
+        "hedef": "altbant",
+        "tip": "image",
+        "yol": "$ALTBANT_BG",
+        "degerler": {
+          "TEAL": "D:/MATERIALS_HTS/2025/Reji/KJ/_altbant_bg/altbant_teal_bg.png",
+          "SD KIRMIZI": "D:/MATERIALS_HTS/2025/Reji/KJ/_altbant_bg/altbant_sd_kirmizi_bg.png",
+          "KIRMIZI": "D:/MATERIALS_HTS/2025/Reji/KJ/_altbant_bg/altbant_kirmizi_bg.png",
+          "MOR": "D:/MATERIALS_HTS/2025/Reji/KJ/_altbant_bg/altbant_mor_bg.png",
+          "TURUNCU": "D:/MATERIALS_HTS/2025/Reji/KJ/_altbant_bg/altbant_turuncu_bg.png",
+          "MULTICOLOR": "D:/MATERIALS_HTS/2025/Reji/KJ/_altbant_bg/altbant_multicolored_bg.png",
+          "DK MULTICOLOR": "D:/MATERIALS_HTS/2025/Reji/KJ/_altbant_bg/altbant_dunya_kupasi_multicolored_bg.png",
+          "DK SARI": "D:/MATERIALS_HTS/2025/Reji/KJ/_altbant_bg/altbant_dunya_kupasi_sari_bg.png"
+        }
+      },
+      {
+        "hedef": "altbant",
+        "tip": "director",
+        "yol": "$MAXSIZE_SET",
+        "degerler": {
+          "DK MULTICOLOR": "START",
+          "DK SARI": "START",
+          "*": "REVERSE"
+        }
+      },
+      {
+        "hedef": "program_logo",
+        "tip": "imageclip",
+        "yol": "$LOGO_IMG_CLIP",
+        "degerler": {
+          "TEAL": "D:/MATERIALS_HTS/2025/Reji/KJ/TEAL/LOGO/teal_logo_00000.vbn",
+          "SD KIRMIZI": "D:/MATERIALS_HTS/2025/Reji/KJ/SD_KIRMIZI/LOGO/sd_kirmizi_logo_00000.vbn",
+          "KIRMIZI": "D:/MATERIALS_HTS/2025/Reji/KJ/KIRMIZI/LOGO/kirmizi_logo_00000.vbn",
+          "MOR": "D:/MATERIALS_HTS/2025/Reji/KJ/MOR/LOGO/mor_logo_00000.vbn",
+          "TURUNCU": "D:/MATERIALS_HTS/2025/Reji/KJ/TURUNCU/LOGO/turuncu_logo_00000.vbn",
+          "MULTICOLOR": "D:/MATERIALS_HTS/2025/Reji/KJ/MULTICOLORED/LOGO/multicolored_logo_00000.vbn",
+          "DK MULTICOLOR": "D:/MATERIALS_HTS/2025/Reji/KJ/DUNYA_KUPASI_MULTICOLORED/LOGO/dunya_kupasi_multicolored_logo_00000_00000.vbn",
+          "DK SARI": "D:/MATERIALS_HTS/2025/Reji/KJ/DUNYA_KUPASI_SARI/LOGO/dunya_kupasi_sari_logo_00000_00000.vbn"
+        }
+      },
+      {
+        "hedef": "TELEFON_FOTOLU",
+        "tip": "imageclip",
+        "yol": "$TEL_FOTO_BG",
+        "degerler": {
+          "TEAL": "D:/MATERIALS_HTS/2025/Reji/KJ/TEAL/KJ_TELEFON_BG/teal_kj_tel_bg_00000.vbn",
+          "SD KIRMIZI": "D:/MATERIALS_HTS/2025/Reji/KJ/SD_KIRMIZI/KJ_TELEFON_BG/sd_kirmizi_kj_tel_bg_00000.vbn",
+          "KIRMIZI": "D:/MATERIALS_HTS/2025/Reji/KJ/KIRMIZI/KJ_TELEFON_BG/kirmizi_kj_tel_bg_00000.vbn",
+          "MOR": "D:/MATERIALS_HTS/2025/Reji/KJ/MOR/KJ_TELEFON_BG/mor_kj_tel_bg_00000.vbn",
+          "TURUNCU": "D:/MATERIALS_HTS/2025/Reji/KJ/TURUNCU/KJ_TELEFON_BG/turuncu_kj_tel_bg_00000.vbn",
+          "MULTICOLOR": "D:/MATERIALS_HTS/2025/Reji/KJ/MULTICOLORED/KJ_TELEFON_BG/multicolored_kj_tel_bg_00000.vbn",
+          "DK MULTICOLOR": "D:/MATERIALS_HTS/2025/Reji/KJ/DUNYA_KUPASI_MULTICOLORED/KJ_TELEFON_BG/multicolored_kj_tel_bg_00000.vbn",
+          "DK SARI": "D:/MATERIALS_HTS/2025/Reji/KJ/DUNYA_KUPASI_SARI/KJ_TELEFON_BG/sari_kj_tel_bg_00000.vbn"
+        }
+      }
+    ]
+  },
+  "kelebek_ayar": {
+    "katman": "MAIN"
+  }
+}

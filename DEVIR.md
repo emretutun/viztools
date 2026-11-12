@@ -69,11 +69,54 @@ python vizuret.py --plan <uygulama>\kumanda.json --hedef <uygulama> --guncelle -
 | `vizscan.py` | Sahne tarama (komut satiri) |
 | `vizengine\uygulama.py` | Arayuz ve vizapp'in ortak uretim akisi |
 | `vizengine\analiz.py` | Sahneden bant, kulakcik, ozel tur, oge cikarimi |
+| `vizengine\kelebek.py` | Kelebek sahnesi tanima, arsivden toplu ice alma |
+| `REJI_KALIPLARI.md` | Canli uygulamalardan ogrenilen reji ve kelebek kurallari |
 | `vizengine\uretec.py` | C# uretici |
 | `sablon\winforms\` | Uygulama sablonu (sahneden bagimsiz kod) |
 | `skill\vizrt-reji\` | Claude'un is akisi ve kurallari |
+| `ogrenilen\` | Sahneye ozel, canli uygulamalardan ogrenilmis ayarlar (FON, logo yazisi); analiz kendiliginden uygular |
 | `scenes\` | Taramalar ve analiz raporlari (makineye ozel) |
+
+## Kelebek eklemek
+
+Kelebekler KJ sahnesinden ayri sahnelerdir ve uygulamada KELEBEK penceresinden, ikinci motorla (GRAFIK-1) verilir.
+viztools Graphic Hub klasorunun icini okuyamaz ("Kelebek klasoru" kutusu yalnizca sahne yolunu kurar); kelebekler
+**Reji uygulamasi** sekmesinde, o kutunun altindan uc yoldan biriyle tanitilir:
+
+1. **Arsivden topluca (10+ sahne icin):** Artist'te kelebek klasorunu tek bir `.via` olarak disa aktarin; Masaustu'ne,
+   Indirilenler'e ya da `samples` klasorune koyun. Klasorun Graphic Hub yolunu kutuya yazin, arsivi secip
+   **Arsivdeki kelebekleri topluca al** deyin. Yol taramayla birlikte kaydedilir.
+2. **Tek tek:** kelebek sahnesini Artist'te acip **Sahneyi tara** deyin (yol engine'den okunur).
+3. **Adiyla:** yalnizca Show TV adlandirmasini kullanan kelebekler icin (`ISIM1`, `TITLE1`, `isimlik_bg_1`; pencere sayisi
+   addaki `2LI` / `3LU`'dan). Adlari yazip **Adiyla ekle** deyin. Sahne taranmaz; adlar farkliysa uygulama yanlis alana
+   yazar ve engine "invalid container name" der. Emin degilseniz 1 ya da 2.
+
+Sonra KJ sahnesi yukluyken listeden eklenecekleri isaretleyip uretin ya da guncelleyin.
+- Ayni adli sahne (`3LU_SAG_DSF`) her programda ayri bir sahnedir. Listede her kelebegin tam yolu ve kaynagi yazar;
+  kaynak suzgeciyle yalnizca o programin kelebeklerini gosterin.
+- Bir kelebek sahnesi degisirse yeniden tarayin (ya da arsivi yeniden alin) ve uygulamayi guncelleyin.
+- Komut satirinda: `python vizapp.py ... --kelebek /YOL/KELEBEK --kelebek-via dosya.via --kelebekler hepsi`.
+
+## Guncellemede plan onarimi
+
+Eski surumle uretilmis bir uygulama guncellenirken plan yeni kurallara tasinir: cikislar, yuvalar, isim listesi,
+kisayollar analizden tamamlanir. Plan sahneyle celisiyorsa (satir bazli bandi iki ayri bant sanmis eski plan gibi)
+kalemler analizden yeniden kurulur ve bu raporda yazar. Kumanda mantigi dosyalari (`Main.Kj.cs`, `KjTipleri.cs`,
+`VizrtExt.cs`, `KelebekForm.cs`, `KelebekTipleri.cs`) sablon surumu degisince yenilenir; eskileri `.yedek` olarak kalir.
+
+## Uygulama sahneyi nasil surer
+
+Kurallar canli uygulamalarin (NTR Show, NTR HT, NTR HTSPOR, MCR HTS, TickerControl HTS) kodu okunarak
+cikarildi: `REJI_KALIPLARI.md`. Ozet: KJ AL ortak cikisi oynatir, yazi degisince yuvalar arasinda gecilir,
+isim/telefon/lokasyon banttan bagimsizdir ve kendi AL butonlari vardir. Isim ve telefon yazisi paneldeki
+ISIMLER listesinden, lokasyon kendi kutusundan verilir. Zemin rengi (FON), yazili logo, fotografli telefon
+ve kisayol tuslari `kumanda.json`'dan ayarlanir.
 
 ## Henuz yok
 
-ROLL / sayfali akislar ve kelebek formlari ureticide yok; bu uygulamalara elle eklenir.
+- ROLL / sayfali akislar.
+- Kelebekte kayitli listeler ve ekran yerlesimi onizlemesi.
+- Sari bant, yas modu gibi banda ozel klip secimleri.
+- Yazi rengi ve gorunurluk gruplari; baska sahne ya da katman kullanan butonlar (separator, imaj, tanitim).
+- Haber akisi (veritabani). KJ ve isim listeleri dosyadan gelir.
+Bunlar uygulamaya elle eklenir; ayrintisi `REJI_KALIPLARI.md`'de.

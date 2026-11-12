@@ -18,6 +18,9 @@ async function uygYukle() {
     UYG.sahneDamga = MODEL.scene.scanned_at;
     UYG.sorular = r.sorular; UYG.uygulamalar = r.uygulamalar; UYG.repos = r.repos; UYG.analizListe = r.liste;
     UYG.sahneAdi = r.sahne_adi;
+    UYG.kelebekAday = r.kelebek_adaylari || [];
+    UYG.viaDosyalari = r.via_files || [];
+    UYG.kelebekSecili = null;   // null: henuz dokunulmadi (guncellemede plandakiler secili gelir)
     UYG.yolEngineden = !!r.yol_engineden;
     if (UYG.yolEngineden || !$("#uSahne").value) $("#uSahne").value = r.sahne_yolu || "";
     $("#uSahne").readOnly = UYG.yolEngineden;
@@ -39,7 +42,7 @@ async function modDegistir(mod) {
   document.querySelector(".mod-yeni").hidden = mod !== "yeni";
   document.querySelector(".mod-guncelle").hidden = mod !== "guncelle";
   $("#btnUret").textContent = mod === "yeni" ? "Uygulamayı üret ve derle" : "Uygulamayı güncelle ve derle";
-  if (mod === "yeni") { UYG.liste = UYG.analizListe; UYG.meta = null; uygCiz(); return; }
+  if (mod === "yeni") { UYG.liste = UYG.analizListe; UYG.meta = null; UYG.kelebekSecili = null; uygCiz(); return; }
   await mevcutKontrol();
 }
 
@@ -54,6 +57,7 @@ async function mevcutKontrol() {
     if (UYG.yolEngineden && r.plan.sahne && r.plan.sahne.toLowerCase() !== $("#uSahne").value.toLowerCase())
       $("#uSahneIpucu").textContent = `Uygulamadaki yol farklıydı (${r.plan.sahne}). Güncellemede engine'den okunan yol yazılacak.`;
     $("#uKelebek").value = r.plan.kelebek_klasoru || "";
+    UYG.kelebekSecili = null;
     const yeni = r.liste.kalemler.filter(x => x.durum === "yeni").length, yok = r.liste.kalemler.filter(x => x.durum === "yok").length;
     $("#uMevcutBilgi").textContent = `${hedef}  ·  sahnede yeni: ${yeni}  ·  sahnede bulunamayan: ${yok}`;
     uygCiz();
@@ -104,6 +108,7 @@ function anaBantYap(x) {
 }
 
 function uygCiz() {
+  kelebekCiz();
   const so = $("#uSorular");
   if (UYG.sorular.length && UYG.mod === "yeni") {
     so.hidden = false;
@@ -154,6 +159,110 @@ function kalemSatiri(x) {
   return r;
 }
 
+// ---------------------------------------------------------------- kelebekler
+// Kelebek ayri sahnedir: Artist'te acilip taranir; taranmis kelebekler burada listelenir, secilenler uygulamaya eklenir.
+/** Kelebek kimligi: sahne yolu. Ayni adli sahne (3LU_SAG_DSF) her programda ayri sahnedir; taranmamis olan "elle/<ad>". */
+const kid = k => k.sahne || ("elle/" + k.anahtar);
+
+function kelebekSecim() {
+  if (UYG.kelebekSecili) return UYG.kelebekSecili;
+  const plandaki = (UYG.meta && UYG.meta.kelebekler || []).map(kid);
+  return UYG.kelebekSecili = new Set(plandaki);
+}
+
+function kelebekTumu() {
+  const aday = UYG.kelebekAday || [];
+  const plandaki = (UYG.meta && UYG.meta.kelebekler || []).filter(k => !aday.some(a => kid(a) === kid(k)));
+  const elle = (UYG.kelebekElle || []).filter(k => !aday.some(a => kid(a) === kid(k)) && !plandaki.some(a => kid(a) === kid(k)));
+  return [...aday, ...plandaki, ...elle];
+}
+
+/** Taranmamis kelebek: Show TV adlandirmasiyla (ISIM1 / TITLE1 / isimlik_bg_1) addan kurulur; pencere sayisi addaki 2LI / 3LU'dan. */
+function kelebekAddan(ad) {
+  const m = /(^|_)(\d)_?(LI|LU)(_|$)/i.exec(ad); if (!m) return null;
+  const n = +m[2], pencereler = [];
+  for (let i = 1; i <= n; i++) pencereler.push({ isim: "$ISIM" + i, titr: "$TITLE" + i, gizle: "$isimlik_bg_" + i, titr_gizle: true });
+  return { anahtar: ad, etiket: ad.replace(/_/g, " "), sahne: "", akis: "duz", pencereler, adet: n, kaynak: "elle (taranmadı)" };
+}
+
+function kelebekCiz() {
+  const kutu = $("#uKelebekler"); if (!kutu) return;
+  kutu.innerHTML = "";
+  const secili = kelebekSecim(), tumu = kelebekTumu(), klasor = $("#uKelebek").value.trim().replace(/\/+$/, "");
+  kutu.appendChild(el("div", "muted small",
+    "viztools Graphic Hub klasörünü okuyamaz; klasör yolu yalnızca sahne yolunu kurmak içindir. Kelebekleri üç yoldan biriyle ekleyin: " +
+    "(1) klasörü yazıp o klasörün .via arşivinden topluca alın, (2) her kelebeği Artist'te açıp tarayın, (3) Show TV adlandırmasındaki (ISIM1 / TITLE1) kelebeklerin adlarını aşağıya yazın."));
+
+  if ((UYG.viaDosyalari || []).length) {
+    const s = el("div"), sec = document.createElement("select"), b = el("button", "btn", "Arşivdeki kelebekleri topluca al");
+    s.style.cssText = "display:flex;gap:6px;margin:6px 0"; sec.className = "input"; sec.style.flex = "1"; b.type = "button";
+    UYG.viaDosyalari.forEach(v => { const o = el("option", null, v.name); o.value = v.path; sec.appendChild(o); });
+    b.onclick = async () => {
+      b.disabled = true; b.textContent = "Arşiv okunuyor...";
+      try {
+        const r = await api("/api/kelebek/via", { path: sec.value, klasor: $("#uKelebek").value.trim() });
+        UYG.kelebekAday = r.kelebek_adaylari || []; UYG.kelebekKaynak = sec.options[sec.selectedIndex].text;
+        toast(r.alinan.length + " kelebek sahnesi alındı" + (r.hatali.length ? ", " + r.hatali.length + " sahne okunamadı" : ""));
+      } catch (e) { toast(e.message, true); }
+      kelebekCiz();
+    };
+    s.appendChild(sec); s.appendChild(b); kutu.appendChild(s);
+  }
+
+  // (3) addan ekleme
+  const e = el("div"), giris = document.createElement("input"), eb = el("button", "btn", "Adıyla ekle");
+  e.style.cssText = "display:flex;gap:6px;margin:6px 0"; giris.className = "input mono"; giris.style.flex = "1"; eb.type = "button";
+  giris.placeholder = "2LI_ESIT, 3LU_ESIT, 3LU_ORTA_DSF ...";
+  eb.onclick = () => {
+    const adlar = giris.value.split(/[,;\s]+/).map(x => x.trim()).filter(Boolean), kotu = [];
+    UYG.kelebekElle = UYG.kelebekElle || [];
+    adlar.forEach(ad => { const k = kelebekAddan(ad); if (!k) { kotu.push(ad); return; }
+      if (!kelebekTumu().some(x => kid(x) === kid(k))) UYG.kelebekElle.push(k); secili.add(kid(k)); });
+    if (kotu.length) toast("Adında pencere sayısı (2LI, 3LU...) olmayanlar eklenmedi: " + kotu.join(", "), true);
+    kelebekCiz();
+  };
+  e.appendChild(giris); e.appendChild(eb); kutu.appendChild(e);
+  if (!tumu.length) return;
+
+  // kaynak suzgeci: baska programin taramalari listeyi doldurmasin
+  const kaynaklar = [...new Set(tumu.map(k => k.kaynak || "tarama"))];
+  if (UYG.kelebekKaynak && !kaynaklar.includes(UYG.kelebekKaynak)) UYG.kelebekKaynak = "";
+  const goster = tumu.filter(k => !UYG.kelebekKaynak || (k.kaynak || "tarama") === UYG.kelebekKaynak || secili.has(kid(k)));
+  const ust = el("div"), suz = document.createElement("select"), hepsi = el("button", "btn", "Görünenleri seç"), hic = el("button", "btn", "Seçimi kaldır");
+  ust.style.cssText = "display:flex;gap:6px;margin:6px 0"; suz.className = "input"; suz.style.flex = "1"; hepsi.type = hic.type = "button";
+  [["", "Kaynak: hepsi (" + tumu.length + ")"], ...kaynaklar.map(k => [k, k + " (" + tumu.filter(x => (x.kaynak || "tarama") === k).length + ")"])]
+    .forEach(([v, t]) => { const o = el("option", null, t); o.value = v; suz.appendChild(o); });
+  suz.value = UYG.kelebekKaynak || "";
+  suz.onchange = () => { UYG.kelebekKaynak = suz.value; kelebekCiz(); };
+  hepsi.onclick = () => { goster.forEach(k => secili.add(kid(k))); kelebekCiz(); };
+  hic.onclick = () => { secili.clear(); kelebekCiz(); };
+  ust.appendChild(suz); ust.appendChild(hepsi); ust.appendChild(hic); kutu.appendChild(ust);
+  kutu.appendChild(el("div", "muted small", secili.size + " kelebek seçili"));
+
+  goster.forEach(k => {
+    const satir = el("label"), c = document.createElement("input"), yazi = el("span", "small");
+    satir.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin:4px 0;cursor:pointer";
+    c.type = "checkbox"; c.checked = secili.has(kid(k)); c.style.marginTop = "3px";
+    c.onchange = () => { c.checked ? secili.add(kid(k)) : secili.delete(kid(k)); kelebekCiz(); };
+    const akis = { duz: "yazı + katman", stage: "tüm animasyon", director: "IN / İSİM animasyonlu" }[k.akis] || k.akis;
+    const elle = (k.kaynak || "").startsWith("elle");
+    const yol = k.sahne || (elle ? (klasor ? klasor + "/" + k.anahtar : "YOL YOK: kelebek klasörünü yazın")
+                                 : "YOL YOK: klasörünü yazıp arşivi yeniden alın ya da sahneyi engine'den tarayın");
+    yazi.textContent = `${k.etiket} · ${k.adet || (k.pencereler || []).length} pencere · ${akis} · ${yol} · ${k.kaynak || "tarama"}`;
+    satir.appendChild(c); satir.appendChild(yazi); kutu.appendChild(satir);
+  });
+}
+
+function kelebekPlan(klasor) {
+  const secili = kelebekSecim();
+  return kelebekTumu().filter(k => secili.has(kid(k))).map(k => {
+    const c = Object.assign({}, k); delete c.kaynak;
+    // Klasor yalnizca adiyla eklenen (taranmamis) kelebege uygulanir; taranmis sahnenin yolu taramasindan gelir
+    if (!c.sahne && klasor && (k.kaynak || "").startsWith("elle")) c.sahne = klasor.replace(/\/+$/, "") + "/" + c.anahtar;
+    return c;
+  });
+}
+
 // ---------------------------------------------------------------- plan + uretim
 function planKur() {
   const sec = UYG.liste.kalemler.filter(x => x.secili);
@@ -164,7 +273,7 @@ function planKur() {
   if (new Set(anah).size !== anah.length) throw new Error("Aynı bant iki kez seçilmiş: " + anah.filter((a, i) => anah.indexOf(a) !== i).join(", "));
   if ([...plan.bantlar, ...plan.kulakciklar, ...plan.ozeller, ...plan.ogeler].some(x => !String(x.etiket).trim()))
     throw new Error("Boş etiket var.");
-  const kodlar = new Set(plan.bantlar.flatMap(b => [b.tek, b.cift]).concat(plan.ozeller.map(o => o.kod)));
+  const kodlar = new Set(plan.bantlar.flatMap(b => [b.tek, b.cift, b.alt_satir].filter(Boolean)).concat(plan.ozeller.map(o => o.kod)));
   plan.turler = UYG.liste.turler.filter(t => kodlar.has(t.kod)).map(t => { const c = Object.assign({}, t); delete c._gecerli; return c; });
   return plan;
 }
@@ -177,6 +286,7 @@ async function uret() {
     if (!sahne.startsWith("/")) throw new Error("KJ sahnesinin Graphic Hub yolunu yazın (/ ile başlar).");
     const plan = planKur();
     plan.sahne = sahne; plan.kelebek_klasoru = $("#uKelebek").value.trim();
+    plan.kelebekler = kelebekPlan(plan.kelebek_klasoru);
     let hedef, guncelle = UYG.mod === "guncelle";
     if (guncelle) {
       hedef = $("#uMevcut").value; if (!hedef) throw new Error("Güncellenecek uygulamayı seçin.");
@@ -226,5 +336,6 @@ $("#uAd").oninput = () => {
 $("#uHedef").oninput = () => (UYG.hedefElle = !!$("#uHedef").value.trim());
 $("#btnUret").onclick = uret;
 $("#uSahne").onblur = sahneYoluDuzelt;
+$("#uKelebek").addEventListener("input", () => kelebekCiz());
 $("#btnKlasor").onclick = () => api("/api/uygulama/ac?what=klasor&hedef=" + encodeURIComponent(UYG.sonHedef || "")).catch(e => toast(e.message, true));
 $("#btnCozum").onclick = () => api("/api/uygulama/ac?what=cozum&hedef=" + encodeURIComponent(UYG.sonHedef || "")).catch(e => toast(e.message, true));

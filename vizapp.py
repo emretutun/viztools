@@ -33,7 +33,7 @@ sys.path.insert(0, KOK)
 from vizengine import VizClient, VizCommandBlocked, VizError
 from vizengine.template import build_scene_model, write_outputs
 from vizengine.analiz import analiz_et, rapor
-from vizengine.uygulama import (UretimHatasi, taslak_plan, plan_oku, karsilastir, uygula)
+from vizengine.uygulama import (UretimHatasi, taslak_plan, plan_oku, karsilastir, uygula, plani_tazele, kalici_alanlar, kontrol_farki)
 
 
 def sahneyi_oku(a) -> dict:
@@ -57,6 +57,12 @@ def main():
                                     ".via ya da eski taramada yazin, orn. /SHOW_TV_2025/REJI/X/KJ/KJ_TUM_V1")
     ap.add_argument("--hedef", required=True, help="cozum klasoru (yeni: bos ya da olmayan)")
     ap.add_argument("--kelebek", help="kelebek sahnelerinin klasoru (ops.)")
+    ap.add_argument("--kelebek-via", metavar="DOSYA",
+                    help=".via arsivindeki butun kelebek sahnelerini topluca tara (tek tek Artist'te acmaya gerek kalmaz); "
+                         "--kelebek ile klasor yolunu da verin, --kelebekler hepsi ile uygulamaya ekleyin")
+    ap.add_argument("--kelebekler", nargs="*", metavar="AD",
+                    help="uygulamaya eklenecek, onceden taranmis kelebek sahneleri (scenes\\ altindaki adlar) ya da 'hepsi'. "
+                         "Guncellemede verilmezse plandakiler korunur ve taramalarindan yenilenir.")
     ap.add_argument("--namespace", help="C# namespace (verilmezse addan)")
     ap.add_argument("--via", help="engine yerine .via arsivinden oku")
     ap.add_argument("--scene", help=".via icindeki sahne adi")
@@ -105,8 +111,11 @@ def main():
             if a.yeniden_planla:
                 plan = taslak_plan(model, an, eski["uygulama"], a.sahne, a.kelebek or eski.get("kelebek_klasoru", ""),
                                    eski["namespace"], jp)
+                kalici_alanlar(plan, eski)   # fon gibi elle girilen ayarlar yeniden planlamada da kalir
             else:
                 plan = dict(eski, sahne=a.sahne, tarama=jp)
+                for not_ in plani_tazele(plan, an):
+                    print(not_)
             fark = karsilastir(plan, an, model)
             if fark["yeni"]:
                 print("SAHNEDE YENI (plana eklenmedi, karar rejinin):", ", ".join(fark["yeni"]))
@@ -121,8 +130,31 @@ def main():
                 raise UretimHatasi("--ad zorunlu (yeni uygulama)")
             plan = taslak_plan(model, an, a.ad, a.sahne, a.kelebek or "", a.namespace or "", jp)
 
+        # 3b) kelebekler: ayri sahneler, onceden taranmis olmali (vizscan.py --details ya da arayuzde "Sahneyi tara")
+        from vizengine import kelebek as K
+        if a.kelebek_via:
+            if not (a.kelebek or plan.get("kelebek_klasoru")):
+                raise UretimHatasi("--kelebek-via icin --kelebek ile arsivdeki kelebeklerin Graphic Hub klasorunu verin")
+            alinan, hatali = K.via_ice_al(a.kelebek_via, a.kelebek or plan["kelebek_klasoru"])
+            print(f"Arsivden {len(alinan)} kelebek sahnesi tarandi: " + ", ".join(alinan))
+            for h in hatali:
+                print("  okunamadi:", h)
+        if a.kelebekler is not None:
+            aday = K.adaylar(plan.get("kelebek_klasoru") or "")
+            istenen = None if [x.lower() for x in a.kelebekler] == ["hepsi"] else {x.lower() for x in a.kelebekler}
+            plan["kelebekler"] = [k for k in aday if k["anahtar"] != model["scene"]["name"]
+                                  and (istenen is None or k["anahtar"].lower() in istenen)]
+            eksik = (istenen or set()) - {k["anahtar"].lower() for k in plan["kelebekler"]}
+            if eksik:
+                raise UretimHatasi("Kelebek taramasi bulunamadi: " + ", ".join(sorted(eksik)) + ". Sahneyi Artist'te acip tarayin.")
+            print("Kelebekler:", ", ".join(f"{k['etiket']} ({k['adet']})" for k in plan["kelebekler"]) or "yok")
+        elif plan.get("kelebekler"):
+            for n in K.tazele(plan):
+                print(n)
+
         # 4) uret (+ derle)
-        ok, satirlar = uygula(plan, hedef, jp, guncelle=a.guncelle, arayuz=a.yeniden_planla, derle_=not a.derleme)
+        panel = a.yeniden_planla or (a.guncelle and kontrol_farki(plan_oku(hedef), plan))   # buton kumesi degistiyse panel yeniden dizilir
+        ok, satirlar = uygula(plan, hedef, jp, guncelle=a.guncelle, arayuz=panel, derle_=not a.derleme)
         for satir in satirlar:
             print(satir)
         print("Plan:", plan_yolu)

@@ -23,6 +23,7 @@ from vizengine.via import read_via, list_scenes, ViaError
 from vizengine.gen_csharp import write_csharp
 from vizengine.analiz import analiz_et, rapor as analiz_raporu
 from vizengine import uygulama as U
+from vizengine.kelebek import adaylar as kelebek_adaylari, via_ice_al as kelebek_via_ice_al
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(HERE, "web")
@@ -59,8 +60,45 @@ def _remember(path, scene):
     _save_state(st)
 
 
+class _KaliciIstemci(VizClient):
+    """
+    viztools acik oldugu surece engine'e tek TCP baglantisi tutar; her sorguda yeniden baglanmaz
+    (engine konsolunda JOINING / LEAVING SESSION satirlari birikmez). `with` blogundan cikinca kapanmaz;
+    baglanti koparsa bir sonraki sorguda yeniden kurulur, viztools kapaninca kapatilir.
+    """
+
+    def __exit__(self, *_):
+        pass
+
+    def send(self, cmd):
+        try:
+            return super().send(cmd)
+        except OSError:          # engine yeniden baslamis ya da baglanti dusmus: bir kez yeniden baglan
+            self.close()
+            return super().send(cmd)
+        except VizError as e:
+            if "baglanti kapandi" not in str(e):
+                raise
+            self.close()
+            return super().send(cmd)
+
+
+_ISTEMCI = None
+_ISTEMCI_KILIT = threading.Lock()
+
+
 def _cli():
-    return VizClient("127.0.0.1", PORT_ENGINE)
+    global _ISTEMCI
+    with _ISTEMCI_KILIT:
+        if _ISTEMCI is None:
+            _ISTEMCI = _KaliciIstemci("127.0.0.1", PORT_ENGINE)
+        return _ISTEMCI
+
+
+def _cli_kapat():
+    with _ISTEMCI_KILIT:
+        if _ISTEMCI is not None:
+            _ISTEMCI.close()
 
 
 def _public_model(model):
@@ -201,10 +239,11 @@ class Handler(BaseHTTPRequestHandler):
                 with _cli() as c:
                     info["engine"] = True
                     info["on_air"] = c.try_send("IS_ON_AIR GET")
-                    for L in ("MAIN_SCENE", "FRONT_SCENE", "BACK_SCENE"):
-                        info["layers"][L] = c.try_send(L + "*NAME GET")
-            except OSError:
-                pass
+                    # Yalnizca MAIN: bos FRONT / BACK katmanini sormak engine konsoluna her seferinde hata yazar
+                    info["layers"]["MAIN_SCENE"] = c.try_send("MAIN_SCENE*NAME GET")
+            except (OSError, VizError):
+                info["engine"] = False
+                _cli_kapat()
             with _lock:
                 info.update({"scanning": STATE["scanning"], "progress": STATE["progress"], "error": STATE["error"],
                              "loaded": STATE["model"]["scene"] if STATE["model"] else None, "paths": STATE["paths"]})
@@ -241,6 +280,8 @@ class Handler(BaseHTTPRequestHandler):
                 "sahne_yolu": m["scene"].get("path") or _load_state().get("sahne_yollari", {}).get(ad, ""),
                 "yol_engineden": bool(m["scene"].get("path")),
                 "liste": U.kalemler(m, an),
+                "kelebek_adaylari": [k for k in kelebek_adaylari() if k["anahtar"] != ad],
+                "via_files": _via_files(),
                 "sorular": an["sorular"],
                 "uygulamalar": U.mevcut_uygulamalar(),
                 "repos": U.REPOS})
@@ -286,6 +327,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "scene": model["scene"]})
         if u.path == "/api/uygulama/hedef":
             return self._json({"hedef": U.varsayilan_hedef(data.get("ad", "")), "namespace": U.namespace_yap(data.get("ad", ""))})
+        if u.path == "/api/kelebek/via":   # arsivdeki butun kelebek sahnelerini topluca tara (engine gerekmez)
+            yol = data.get("path", "")
+            if not yol.lower().endswith(".via") or not os.path.isfile(yol):
+                return self._json({"error": ".via dosyasi bulunamadi"}, 400)
+            try:
+                klasor = str(data.get("klasor", "")).strip()
+                if not klasor.startswith("/"):
+                    return self._json({"error": "Once bu arsivdeki kelebeklerin Graphic Hub klasorunu yazin (Kelebek klasoru kutusu). "
+                                                "Ayni adli sahne baska programlarda da oldugu icin yol arsivle birlikte kaydedilir."}, 400)
+                alinan, hatali = kelebek_via_ice_al(yol, klasor)
+            except (ViaError, OSError) as e:
+                return self._json({"error": str(e)}, 400)
+            with _lock:
+                ad = STATE["model"]["scene"]["name"] if STATE["model"] else ""
+            return self._json({"alinan": alinan, "hatali": hatali,
+                               "kelebek_adaylari": [k for k in kelebek_adaylari() if k["anahtar"] != ad]})
         if u.path == "/api/uygulama/kontrol":
             with _lock:
                 m, an = STATE["model"], STATE["analiz"]
@@ -309,6 +366,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "Bu klasor viztools ile uretilmis bir uygulama degil (kumanda.json yok)"}, 400)
             if not guncelle and os.path.isdir(hedef) and os.listdir(hedef):
                 return self._json({"error": "Hedef klasor bos degil. Mevcut uygulamayi guncellemek icin 'Mevcut uygulama'yi secin."}, 400)
+            eski_plan = U.plan_oku(hedef) if guncelle else None
+            with _lock:
+                an = STATE.get("analiz")
+            U.kalici_alanlar(plan, eski_plan, m)
+            with _lock:
+                an_fon = (STATE.get("analiz") or {}).get("fon")
+            if an_fon and "fon" not in plan:   # sahne icin ogrenilmis FON tablosu (ogrenilen/<sahne>.json)
+                plan["fon"] = an_fon
+            with _lock:
+                an_kel = (STATE.get("analiz") or {}).get("kelebek_ayar")
+            if an_kel and "kelebek_ayar" not in plan:
+                plan["kelebek_ayar"] = an_kel
+            if eski_plan and an:
+                U.plani_tazele(plan, an, eski_plan)
+            plan["surum"] = U.PLAN_SURUMU
             hatalar = U.dogrula(plan, m)
             if hatalar:
                 return self._json({"error": "Plan sahneyle uyusmuyor: " + "; ".join(hatalar[:6])}, 400)
@@ -357,6 +429,8 @@ def main():
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        _cli_kapat()   # viztools kapaninca engine baglantisi da kapanir
 
 
 if __name__ == "__main__":

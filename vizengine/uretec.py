@@ -11,6 +11,19 @@ kumanda.json alanlari:
   uygulama, namespace, sahne (Graphic Hub yolu), kelebek_klasoru (ops.), tarama (vizscan JSON yolu),
   turler[{kod, etiket, giris, cikis, ust, alt|null}], bantlar[{anahtar, etiket, tek, cift}],
   kulakciklar[{anahtar, etiket, giris, cikis}], ozeller[{kod, etiket}], ogeler[{anahtar, etiket, giris, cikis}]
+Satir bazli bant: bantlar[{..., tek = cift = ust satir turu, alt_satir (alt satir turunun kodu), alt_cikis (alt satiri alan director)}]
+Istege bagli (canli uygulamalardan ogrenilen davranislar; ayrinti REJI_KALIPLARI.md):
+  turler[]:  alan, yuvalar[{giris, cikis, ust, alt, ayirac}], ayirac (alt satir bosken gizlenen container),
+             resim {container, varsayilan} (fotografli grafik: GOZAT butonu)
+  ozeller[]: kaynak "liste" | "isim" | "kutu" (metin KJ listesinden / ISIMLER listesinden / kendi kutusundan),
+             tus "F3" (VER kisayolu), al_tus "F4" (AL kisayolu)
+  ogeler[]:  metin {container, secenekler[]} (yazili oge), kj_ile true|false ("KJ ile" kutusu ve ilk durumu),
+             gorunur [container], oto_al_sn, bandi_al
+  fon:       {secenekler[], varsayilan, ayarlar[{hedef, tip "imageclip"|"image"|"director", yol, degerler{secenek: deger}}]}
+Kelebek (ikinci motor, ayri sahneler; vizengine/kelebek.py):
+  kelebekler[{anahtar, etiket, sahne, tarama, akis "duz"|"stage"|"director", pencereler[{isim, titr, gizle, titr_gizle}],
+              giris, basa_cek, isim_in, isim_out, titr_in, titr_out, gorunur[], klip}]
+  kelebek_ayar: {katman "BACK"|"MAIN", klip (arka plan klibi dosyasi)}
 """
 from __future__ import annotations
 
@@ -22,6 +35,7 @@ import shutil
 import subprocess
 
 from .gen_csharp import ident, render_csharp, short_paths, class_name, tek_satir
+from . import kelebek as _kelebek
 
 KOK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SABLON = os.path.join(KOK, "sablon", "winforms")
@@ -92,15 +106,58 @@ def dogrula(plan: dict, model: dict) -> list[str]:
     for t in plan["turler"]:
         dir_var(t["giris"], t["kod"]); dir_var(t["cikis"], t["kod"])
         con_var(t["ust"], t["kod"]); con_var(t.get("alt"), t["kod"])
+        for i, y in enumerate(t.get("yuvalar") or [], 2):
+            dir_var(y["giris"], f"{t['kod']} {i}. yuva"); con_var(y["ust"], f"{t['kod']} {i}. yuva")
+            if y.get("cikis"):
+                dir_var(y["cikis"], f"{t['kod']} {i}. yuva")
+            con_var(y.get("alt"), f"{t['kod']} {i}. yuva")
     for b in plan["bantlar"]:
-        for k in (b["tek"], b["cift"]):
+        for k in (b["tek"], b["cift"]) + ((b["alt_satir"],) if b.get("alt_satir") else ()):
             if k not in kodlar:
                 hatalar.append(f"bant {b['etiket']}: tur '{k}' turler listesinde yok")
+        if b.get("alt_satir"):
+            if b["tek"] != b["cift"]:
+                hatalar.append(f"bant {b['etiket']}: satir bazli bantta tek ve cift ayni tur (ust satir) olmali")
+            if b.get("alt_cikis"):
+                dir_var(b["alt_cikis"], f"bant {b['etiket']} alt satir cikisi")
     if not any(b["anahtar"] == "" for b in plan["bantlar"]):
         hatalar.append("bantlar: NORMAL (anahtar \"\") bant yok")
     for o in plan["ozeller"]:
         if o["kod"] not in kodlar:
             hatalar.append(f"ozel {o['etiket']}: tur '{o['kod']}' turler listesinde yok")
+        if o.get("kaynak", "liste") not in ("liste", "isim", "kutu"):
+            hatalar.append(f"ozel {o['etiket']}: kaynak 'liste', 'isim' ya da 'kutu' olmali: {o.get('kaynak')}")
+        for alan in ("tus", "al_tus"):
+            if o.get(alan) and not re.fullmatch(r"F([1-9]|1[0-2])", o[alan]) or o.get(alan) in ("F7", "F8"):
+                hatalar.append(f"ozel {o['etiket']}: {alan} F1..F12 olmali (F7 ve F8 ayrilmis): {o.get(alan)}")
+    for t in plan["turler"]:
+        con_var(t.get("ayirac"), t["kod"] + " ayirac")
+        for y in t.get("yuvalar") or []:
+            con_var(y.get("ayirac"), t["kod"] + " yuva ayirac")
+        if t.get("resim"):
+            con_var(t["resim"].get("container"), t["kod"] + " resim")
+            if not t["resim"].get("container"):
+                hatalar.append(f"{t['kod']}: resim.container eksik")
+    for o in plan["ogeler"]:
+        if o.get("metin"):
+            con_var(o["metin"].get("container"), "oge " + o["etiket"] + " metin")
+        for g in o.get("gorunur") or []:
+            con_var(g, "oge " + o["etiket"] + " gorunur")
+    fon = plan.get("fon")
+    if fon:
+        if not fon.get("secenekler"):
+            hatalar.append("fon: secenekler bos")
+        for a in fon.get("ayarlar", []):
+            ne = f"fon ayari ({a.get('hedef')})"
+            if a.get("tip") not in ("imageclip", "image", "director"):
+                hatalar.append(f"{ne}: tip 'imageclip', 'image' ya da 'director' olmali: {a.get('tip')}")
+            elif a["tip"] == "director":
+                dir_var(a.get("yol"), ne)
+            else:
+                con_var(a.get("yol"), ne)
+            for k in a.get("degerler", {}):
+                if k != "*" and k not in fon.get("secenekler", []):
+                    hatalar.append(f"{ne}: '{k}' fon seceneklerinde yok")
     for k in plan["kulakciklar"]:
         dir_var(k["giris"], "kulakcik " + k["etiket"]); dir_var(k["cikis"], "kulakcik " + k["etiket"])
     for o in plan["ogeler"]:
@@ -108,20 +165,50 @@ def dogrula(plan: dict, model: dict) -> list[str]:
     anahtarlar = [b["anahtar"] for b in plan["bantlar"]]
     if len(set(anahtarlar)) != len(anahtarlar):
         hatalar.append("bantlar: ayni anahtar birden fazla")
+    hatalar += _kelebek.dogrula(plan)
     return hatalar
 
 
 # =========================================================================
 #  URETILEN C# DOSYALARI
 # =========================================================================
+BANT_ALANI = "altbant"
+SABLON_SURUMU = 7          # Main.Kj.cs / KjTipleri.cs mantigi degisince artar; guncellemede eski surum yenilenir
+SABLON_MANTIK = ("Main.Kj.cs", "KjTipleri.cs", "VizrtExt.cs", "KelebekForm.cs", "KelebekTipleri.cs")
+
+
+def sablon_surumu(proje: str) -> int:
+    try:
+        m = re.search(r"viztools-sablon:\s*(\d+)", open(os.path.join(proje, "Main.Kj.cs"), encoding="utf-8-sig").read())
+    except OSError:
+        return 0
+    return int(m.group(1)) if m else 1
+
+
+def sablonu_yenile(proje: str, plan: dict) -> list[str]:
+    """Eski sablonla uretilmis uygulamada kumanda mantigini (Main.Kj.cs, KjTipleri.cs) yeniler; eskisi .yedek olarak kalir."""
+    if sablon_surumu(proje) >= SABLON_SURUMU:
+        return []
+    for f in SABLON_MANTIK:
+        hedef = os.path.join(proje, f)
+        if os.path.exists(hedef) and not os.path.exists(hedef + ".yedek"):   # ilk yedek korunur
+            os.replace(hedef, hedef + ".yedek")
+        s = open(os.path.join(SABLON, f), encoding="utf-8").read()
+        s = s.replace("__NS__", plan["namespace"]).replace("__BASLIK__", plan["uygulama"]).replace("__SAHNE__", plan["sahne"])
+        open(hedef, "w", encoding="utf-8-sig").write(s)
+    return ["Kumanda mantigi yeni surume gecirildi (Main.Kj.cs, KjTipleri.cs, VizrtExt.cs). Eski dosyalar .yedek olarak duruyor; "
+            "bu dosyalara elle kod eklediyseniz yedekten tasiyin."]
+
+
 def _cs(s: str | None) -> str:
     if s is None:
         return "null"
     return '"' + tek_satir(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def sahne_cs(plan: dict) -> str:
+def sahne_cs(plan: dict, model: dict | None = None) -> str:
     ns = plan["namespace"]
+    kaynaklar = {o["kod"]: o.get("kaynak", "liste") for o in plan["ozeller"]}
     L = ["// <auto-generated>",
          f"//   viztools ureticisi tarafindan kumanda.json'dan yazildi. Elle duzenlemeyin;",
          f"//   sahne degisince: vizuret.py --plan kumanda.json --hedef . --guncelle",
@@ -129,9 +216,29 @@ def sahne_cs(plan: dict) -> str:
          "    public static partial class KjTipleri", "    {",
          f"        public const string SahneYolu = {_cs(plan['sahne'])};", "",
          "        public static readonly IReadOnlyList<KjTipi> Tumu = new List<KjTipi>", "        {"]
+    bant_kodlari = {k for b in plan["bantlar"] for k in (b["tek"], b["cift"], b.get("alt_satir")) if k}
+    satirli = {b["tek"]: b for b in plan["bantlar"] if b.get("alt_satir")}   # ust satir turu -> bant
     for t in plan["turler"]:
-        L.append(f"            new() {{ Kod = {_cs(t['kod'])}, Etiket = {_cs(t['etiket'])}, Giris = {_cs(t['giris'])}, "
-                 f"Cikis = {_cs(t['cikis'])}, Ust = {_cs(t['ust'])}, Alt = {_cs(t.get('alt'))} }},")
+        # Bant turleri ayni alani paylasir; ozel turler banttan bagimsizdir (plan 'alan' vermediyse kendi alani).
+        alan = BANT_ALANI if t["kod"] in bant_kodlari else (t.get("alan") or t["kod"].lower())
+        yuva = ""
+        if t.get("yuvalar"):
+            yuva = ", Yuvalar = new KjYuva[] { " + ", ".join(
+                f"new({_cs(y['giris'])}, {_cs(y['ust'])}, {_cs(y.get('alt'))}, {_cs(y.get('cikis') or t['cikis'])}"
+                + (f", {_cs(y['ayirac'])}" if y.get("ayirac") else "") + ")" for y in t["yuvalar"]) + " }"
+        ek = ""
+        if kaynaklar.get(t["kod"], "liste") != "liste":
+            ek += f", Kaynak = {_cs(kaynaklar[t['kod']])}"
+        if t.get("ayirac"):
+            ek += f", Ayirac = {_cs(t['ayirac'])}"
+        if t["kod"] in satirli:
+            ek += f", AltTur = {_cs(satirli[t['kod']]['alt_satir'])}, AltCikis = {_cs(satirli[t['kod']].get('alt_cikis'))}"
+        if t.get("resim"):
+            ek += f", Resim = {_cs(t['resim']['container'])}"
+            if t["resim"].get("varsayilan"):
+                ek += f", ResimVarsayilan = {_cs(t['resim']['varsayilan'])}"
+        L.append(f"            new() {{ Kod = {_cs(t['kod'])}, Etiket = {_cs(t['etiket'])}, Alan = {_cs(alan)}, Giris = {_cs(t['giris'])}, "
+                 f"Cikis = {_cs(t['cikis'])}, Ust = {_cs(t['ust'])}, Alt = {_cs(t.get('alt'))}{yuva}{ek} }},")
     L += ["        };", "", "        public static readonly IReadOnlyList<Varyant> Varyantlar = new List<Varyant>", "        {"]
     L += [f"            new({_cs(b['anahtar'])}, {_cs(b['etiket'])}, {_cs(b['tek'])}, {_cs(b['cift'])})," for b in plan["bantlar"]]
     L += ["        };", "", "        public static readonly IReadOnlyList<Kulakcik> Kulakciklar = new List<Kulakcik>", "        {"]
@@ -139,9 +246,58 @@ def sahne_cs(plan: dict) -> str:
     L += ["        };", "", "        public static readonly IReadOnlyList<Ozel> Ozeller = new List<Ozel>", "        {"]
     L += [f"            new({_cs(o['kod'])}, {_cs(o['etiket'])})," for o in plan["ozeller"]]
     L += ["        };", "", "        public static readonly IReadOnlyList<Oge> Ogeler = new List<Oge>", "        {"]
-    L += [f"            new({_cs(o['anahtar'])}, {_cs(o['etiket'])}, {_cs(o['giris'])}, {_cs(o['cikis'])})," for o in plan["ogeler"]]
+    for o in plan["ogeler"]:
+        ek = []
+        if o.get("metin"):
+            ek.append(f"Metin = {_cs(o['metin']['container'])}")
+        if o.get("gorunur"):
+            ek.append("Gorunur = new[] { " + ", ".join(_cs(g) for g in o["gorunur"]) + " }")
+        if o.get("oto_al_sn"):
+            ek.append(f"OtoAlSn = {int(o['oto_al_sn'])}")
+        if o.get("bandi_al"):
+            ek.append("BandiAl = true")
+        L.append(f"            new({_cs(o['anahtar'])}, {_cs(o['etiket'])}, {_cs(o['giris'])}, {_cs(o['cikis'])})"
+                 + (" { " + ", ".join(ek) + " }" if ek else "") + ",")
+    fon = plan.get("fon") or {}
+    L += ["        };", "", "        public static readonly IReadOnlyList<string> FonSecenekleri = new List<string>", "        {"]
+    L += [f"            {_cs(x)}," for x in fon.get("secenekler", [])]
+    L += ["        };", "", f"        public const string FonVarsayilan = {_cs(fon.get('varsayilan') or '')};", "",
+          "        public static readonly IReadOnlyList<FonAyari> FonAyarlari = new List<FonAyari>", "        {"]
+    for a in fon.get("ayarlar", []):
+        deger = ", ".join(f"[{_cs(k)}] = {_cs(v)}" for k, v in a.get("degerler", {}).items())
+        L.append(f"            new({_cs(a['hedef'])}, {_cs(a['tip'])}, {_cs(a['yol'])}, new Dictionary<string, string> {{ {deger} }}),")
+    L += ["        };", "", "        /// <summary>isimler.json yokken ISIMLER listesine konan ornek satirlar (sahnedeki metinler).</summary>",
+          "        public static readonly IReadOnlyList<(string Isim, string Titr)> IsimOrnekleri = new List<(string, string)>", "        {"]
+    L += [f"            ({_cs(a)}, {_cs(b)})," for a, b in isim_ornekleri(plan, model)]
     L += ["        };", "    }", "}", ""]
     return NL.join(L)
+
+
+def _sahne_metinleri(model: dict | None) -> dict:
+    metin = {}
+    if not model:
+        return metin
+    kisa = short_paths(model["containers"])
+    for c in model["containers"]:
+        if c.get("text"):
+            metin[c["name_path"]] = c["text"]
+            if kisa.get(c["name_path"]):
+                metin.setdefault(kisa[c["name_path"]].lstrip("!"), c["text"])
+    return metin
+
+
+def isim_ornekleri(plan: dict, model: dict | None) -> list[tuple[str, str]]:
+    metin = _sahne_metinleri(model)
+    turler = {t["kod"]: t for t in plan["turler"]}
+    out = []
+    for o in plan["ozeller"]:
+        t = turler.get(o["kod"])
+        if o.get("kaynak") != "isim" or not t:
+            continue
+        cift = (tek_satir(metin.get(t["ust"], "")), tek_satir(metin.get(t.get("alt") or "", "")))
+        if cift[0] and cift not in out:
+            out.append(cift)
+    return out
 
 
 def ornek_liste(plan: dict, model: dict) -> dict:
@@ -158,9 +314,14 @@ def ornek_liste(plan: dict, model: dict) -> dict:
     for b in plan["bantlar"]:
         for kod in dict.fromkeys([b["tek"], b["cift"]]):
             t = turler[kod]
+            alt_yol = turler[b["alt_satir"]]["ust"] if b.get("alt_satir") else t.get("alt")
             kjler.append({"tur": kod, "kulakcik": "", "satir1": tek_satir(metin.get(t["ust"], t["etiket"])),
-                          "satir2": tek_satir(metin.get(t["alt"], "")) if t.get("alt") else ""})
+                          "satir2": tek_satir(metin.get(alt_yol, "")) if alt_yol else ""})
+            if b.get("alt_satir"):   # bir de tek satirlik ornek
+                kjler.append({"tur": kod, "kulakcik": "", "satir1": tek_satir(metin.get(turler[kod].get("yuvalar", [{}])[0].get("ust"), t["etiket"])), "satir2": ""})
     for o in plan["ozeller"]:
+        if o.get("kaynak", "liste") != "liste":
+            continue   # metni KJ listesinden gelmez
         t = turler[o["kod"]]
         kjler.append({"tur": o["kod"], "kulakcik": "", "satir1": tek_satir(metin.get(t["ust"], t["etiket"])), "satir2": ""})
     return {"bolumler": [{"baslik": "Örnek (sahneden)", "kjler": kjler}]}
@@ -169,7 +330,13 @@ def ornek_liste(plan: dict, model: dict) -> dict:
 # =========================================================================
 #  KUMANDA PANELI (Main.Designer.cs)
 # =========================================================================
-URETILMIS = re.compile(r"^(btn_tek_ver|btn_cift_ver|btn_KjAl|lbl_Bant|lbl_Kulakcik|lbl_YayinTuru|cbx_bant_\w+|cbx_kul_\w+|btn_ozel_\w+|btn_oge_\w+)$")
+URETILMIS = re.compile(r"^(btn_tek_ver|btn_cift_ver|btn_KjAl|lbl_Bant|lbl_Kulakcik|lbl_YayinTuru|cbx_bant_\w+|cbx_kul_\w+|btn_ozel_\w+|btn_oge_\w+"
+                       r"|txt_ozel_\w+|lbl_ozel_\w+|cmb_oge_\w+|txt_oge_\w+|cbx_ogekj_\w+|cbx_ogeoto_\w+|lbl_Fon|cmb_Fon|dgv_Isimler|btn_IsimKaydet|btn_IsimSil)$")
+
+
+def _cok_satir(s: str) -> str:
+    """Cok satirli sahne metnini kutuda gosterilecek hale getirir: satir sonu yerine \\n yazilir (uygulama geri cevirir)."""
+    return "\\n".join(x.strip() for x in str(s or "").splitlines() if x.strip())
 
 
 def _slug(s: str, kullanilan: set) -> str:
@@ -181,7 +348,7 @@ def _slug(s: str, kullanilan: set) -> str:
     return a
 
 
-def kumanda_kontrolleri(plan: dict) -> tuple[list, int]:
+def kumanda_kontrolleri(plan: dict, model: dict | None = None) -> tuple[list, int]:
     """(kontroller, gereken_yukseklik). Kontrol: (ad, tur, ozellik satirlari)."""
     ctl = []
 
@@ -243,32 +410,138 @@ def kumanda_kontrolleri(plan: dict) -> tuple[list, int]:
             secici(f"cbx_kul_{_slug(k['anahtar'] or 'yok', kul2)}", k["etiket"], k["anahtar"], 90 + c * 107, y + r * 36, 103, 32, k["anahtar"] == "")
         y += math.ceil(len(ogeler) / 5) * 36 + 6
 
-    etiket("lbl_YayinTuru", "YAYINDA: -", 12, y, 614, 28, size="11.25F", renk="DarkRed")
+    def kutu(ad, metin, tag, x, y, w, h):
+        ctl.append((ad, "TextBox", [f"{ad}.Font = new Font(\"Segoe UI\", 9.75F);", f"{ad}.Location = new Point({x}, {y});",
+                                    f"{ad}.Name = \"{ad}\";", f"{ad}.Size = new Size({w}, {h});", f"{ad}.Tag = {_cs(tag)};",
+                                    f"{ad}.Text = {_cs(metin)};"]))
+
+    def acilir(ad, secenekler, metin, tag, x, y, w, h, yazilabilir):
+        L = [f"{ad}.DropDownStyle = ComboBoxStyle.{'DropDown' if yazilabilir else 'DropDownList'};",
+             f"{ad}.Font = new Font(\"Segoe UI\", 9.75F);", f"{ad}.FormattingEnabled = true;"]
+        if secenekler:
+            L.append(f"{ad}.Items.AddRange(new object[] {{ " + ", ".join(_cs(x) for x in secenekler) + " });")
+        L += [f"{ad}.Location = new Point({x}, {y});", f"{ad}.Name = \"{ad}\";", f"{ad}.Size = new Size({w}, {h});"]
+        if tag is not None:
+            L.append(f"{ad}.Tag = {_cs(tag)};")
+        if yazilabilir and metin:
+            L.append(f"{ad}.Text = {_cs(metin)};")
+        ctl.append((ad, "ComboBox", L))
+
+    def isaret(ad, metin, tag, x, y, w, h, secili):
+        L = [f"{ad}.Checked = true;", f"{ad}.CheckState = CheckState.Checked;"] if secili else []
+        L += [f"{ad}.Font = new Font(\"Segoe UI\", 8.25F);", f"{ad}.Location = new Point({x}, {y});", f"{ad}.Name = \"{ad}\";",
+              f"{ad}.Size = new Size({w}, {h});", f"{ad}.Tag = {_cs(tag)};", f"{ad}.Text = {_cs(metin)};",
+              f"{ad}.UseVisualStyleBackColor = true;"]
+        ctl.append((ad, "CheckBox", L))
+
+    # FON secimi (varsa) yayin satirinin solunda durur
+    if plan.get("fon"):
+        etiket("lbl_Fon", "FON", 12, y, 44, 28)
+        acilir("cmb_Fon", [], "", None, 58, y + 1, 170, 25, yazilabilir=False)
+        etiket("lbl_YayinTuru", "YAYINDA: -", 238, y, 388, 28, size="11.25F", renk="DarkRed")
+    else:
+        etiket("lbl_YayinTuru", "YAYINDA: -", 12, y, 614, 28, size="11.25F", renk="DarkRed")
     y += 34
 
+    turler = {t["kod"]: t for t in plan["turler"]}
+    metinler = _sahne_metinleri(model)
+    metinler_ham = metinler
+
+    # ISIMLER listesi: metni buradan gelen ozel tur varsa (isim / telefon)
+    if any(o.get("kaynak") == "isim" for o in plan["ozeller"]):
+        ad = "dgv_Isimler"
+        ctl.append((ad, "DataGridView", [
+            f"{ad}.AllowUserToResizeRows = false;", f"{ad}.BackgroundColor = Color.White;",
+            f"{ad}.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;",
+            f"{ad}.Location = new Point(12, {y});", f"{ad}.MultiSelect = false;", f"{ad}.Name = \"{ad}\";",
+            f"{ad}.RowHeadersVisible = false;", f"{ad}.SelectionMode = DataGridViewSelectionMode.FullRowSelect;",
+            f"{ad}.Size = new Size(520, 104);"]))
+        btn("btn_IsimKaydet", "KAYDET", 538, y, 88, 30, olay="btn_IsimKaydet_Click", font="Segoe UI\", 9F")
+        btn("btn_IsimSil", "SİL", 538, y + 36, 88, 30, olay="btn_IsimSil_Click", font="Segoe UI\", 9F")
+        y += 110
+
+    # Ozel turler ve ogeler akis halinde dizilir. Kalem: (genislik, ust satir var mi, ciz(x, y_ust, y_buton))
+    VER_W, AL_W, UST_H = 132, 64, 30
+    COK_SATIR = 16   # cok satirli yazi kutusu olan satira eklenen yukseklik
+    kalemler = []
     kul3 = set()
-    for i, o in enumerate(plan["ozeller"]):
-        r, c = divmod(i, 3)
-        btn(f"btn_ozel_{_slug(o['kod'], kul3)}_ver", o["etiket"], 12 + c * 202, y + r * 54, 196, 48, "LimeGreen",
-            tag=o["kod"], olay="btn_ozel_ver_Click")
-    if plan["ozeller"]:
-        y += math.ceil(len(plan["ozeller"]) / 3) * 54
+    alanlar: dict[str, list[dict]] = {}
+    for o in plan["ozeller"]:   # ayni alani paylasanlar yan yana durur ve tek AL kullanir
+        t = turler.get(o["kod"], {})
+        alanlar.setdefault(t.get("alan") or o["kod"].lower(), []).append(o)
+    for alan, uyeler in alanlar.items():
+        adlar = [_slug(o["kod"], kul3) for o in uyeler]
+        ust_var = any(o.get("kaynak") == "kutu" or turler.get(o["kod"], {}).get("resim") for o in uyeler)
+        al_tus = next((o["al_tus"] for o in uyeler if o.get("al_tus")), None)
+
+        def ciz(x, yu, yb, uyeler=uyeler, adlar=adlar, alan=alan, al_tus=al_tus):
+            for i, (o, s_) in enumerate(zip(uyeler, adlar)):
+                xi = x + i * (VER_W + 4)
+                t = turler.get(o["kod"], {})
+                if o.get("kaynak") == "kutu":
+                    kutu(f"txt_ozel_{s_}", tek_satir(metinler.get(t.get("ust"), "")), o["kod"], xi, yu + 2, VER_W, 25)
+                elif t.get("resim"):
+                    btn(f"btn_ozel_{s_}_gozat", "GÖZAT", xi, yu, 58, 27, tag=o["kod"], olay="btn_ozel_gozat_Click", font="Segoe UI\", 8.25F")
+                    etiket(f"lbl_ozel_{s_}", "resim seçilmedi", xi + 62, yu, VER_W - 62 + (AL_W + 4 if len(uyeler) == 1 else 0), 27,
+                           size="8.25F", renk="DimGray")
+                    ctl[-1][2].insert(0, f"lbl_ozel_{s_}.AutoEllipsis = true;")
+                    ctl[-1][2].append(f"lbl_ozel_{s_}.Tag = {_cs(o['kod'])};")
+                metin = o["etiket"] + (f" ({o['tus']})" if o.get("tus") else "")
+                btn(f"btn_ozel_{s_}_ver", metin, xi, yb, VER_W, 48, "LimeGreen", tag=o["kod"], olay="btn_ozel_ver_Click", font="Candara\", 9.75F")
+            btn(f"btn_ozel_{adlar[0]}_al", "AL" + (f" ({al_tus})" if al_tus else ""), x + len(uyeler) * (VER_W + 4), yb, AL_W, 48,
+                enabled=False, tag=alan, olay="btn_ozel_al_Click", font="Candara\", 9.75F")
+        kalemler.append((len(uyeler) * (VER_W + 4) + AL_W, UST_H if ust_var else 0, ciz))
 
     kul4 = set()
-    for i, o in enumerate(plan["ogeler"]):
-        r, c = divmod(i, 3)
-        x = 12 + c * 208
-        s = _slug(o["anahtar"], kul4)
-        btn(f"btn_oge_{s}_ver", o["etiket"], x, y + r * 54, 140, 48, "LimeGreen", tag=o["anahtar"],
-            olay="btn_oge_ver_Click", font="Candara\", 9.75F")
-        btn(f"btn_oge_{s}_al", "AL", x + 144, y + r * 54, 56, 48, enabled=False, tag=o["anahtar"],
-            olay="btn_oge_al_Click", font="Candara\", 9.75F")
-    if plan["ogeler"]:
-        y += math.ceil(len(plan["ogeler"]) / 3) * 54
+    for o in plan["ogeler"]:
+        s_ = _slug(o["anahtar"], kul4)
+        ust_var = bool(o.get("metin") or o.get("oto_al_sn"))
+
+        def ciz(x, yu, yb, o=o, s_=s_):
+            if o.get("metin"):
+                kj = o.get("kj_ile") is not None
+                w = VER_W if kj else VER_W + 4 + AL_W
+                if o["metin"].get("secenekler"):   # hazir secenekler: acilir liste (tek satir)
+                    acilir(f"cmb_oge_{s_}", o["metin"]["secenekler"], o["metin"]["secenekler"][0], o["anahtar"], x, yu + 2, w, 25, yazilabilir=True)
+                else:                              # serbest yazi: cok satirli kutu, satirlar sahnedeki gibi gorunur
+                    ad = f"txt_oge_{s_}"
+                    satirlar = [x_.strip() for x_ in str(metinler_ham.get(o["metin"]["container"], "")).splitlines() if x_.strip()]
+                    ctl.append((ad, "TextBox", [
+                        "{ad}.AcceptsReturn = true;", "{ad}.Font = new Font(\"Segoe UI\", 9F);",
+                        "{ad}.Lines = new string[] { " + ", ".join(_cs(z) for z in satirlar) + " };",
+                        f"{ad}.Location = new Point({x}, {yu});", "{ad}.Multiline = true;", "{ad}.Name = \"{ad}\";",
+                        f"{ad}.Size = new Size({w}, {UST_H + 14});", f"{ad}.Tag = {_cs(o['anahtar'])};"]))
+                    ctl[-1] = (ad, "TextBox", [z.replace("{ad}", ad) for z in ctl[-1][2]])
+                if kj:
+                    isaret(f"cbx_ogekj_{s_}", "KJ ile", o["anahtar"], x + VER_W + 4, yu + 3, AL_W, 22, bool(o["kj_ile"]))
+            elif o.get("oto_al_sn"):
+                isaret(f"cbx_ogeoto_{s_}", f"{int(o['oto_al_sn'])} sn sonra AL", o["anahtar"], x, yu + 3, VER_W + 4 + AL_W, 22, True)
+            btn(f"btn_oge_{s_}_ver", o["etiket"], x, yb, VER_W, 48, "LimeGreen", tag=o["anahtar"], olay="btn_oge_ver_Click", font="Candara\", 9.75F")
+            btn(f"btn_oge_{s_}_al", "AL", x + VER_W + 4, yb, AL_W, 48, enabled=False, tag=o["anahtar"], olay="btn_oge_al_Click", font="Candara\", 9.75F")
+        serbest = bool(o.get("metin")) and not o["metin"].get("secenekler")
+        kalemler.append((VER_W + 4 + AL_W, (UST_H + COK_SATIR if serbest else UST_H) if ust_var else 0, ciz))
+
+    satir, x = [], 12
+    def satiri_yaz():
+        nonlocal y, satir
+        if not satir:
+            return
+        ust = max([0] + [u for _, u, _, _ in satir])
+        for xi, u, ciz, _ in satir:   # ust satiri kisa olan kalem butonunun hemen ustune hizalanir
+            ciz(xi, y + ust - u, y + ust)
+        y += ust + 54
+        satir = []
+    for w, ust_var, ciz in kalemler:
+        if satir and x + w > 628:
+            satiri_yaz()
+            x = 12
+        satir.append((x, ust_var, ciz, w))
+        x += w + 8
+    satiri_yaz()
     return ctl, y + 6
 
 
-def designer_kumanda_yaz(designer: str, plan: dict) -> tuple[str, list[str]]:
+def designer_kumanda_yaz(designer: str, plan: dict, model: dict | None = None) -> tuple[str, list[str]]:
     """Designer'daki uretilmis kumanda kontrollerini siler, plana gore yeniden yazar, yerlesimi ayarlar."""
     d, notlar = designer, []
     mevcut = re.findall(r"grp_Kumanda\.Controls\.Add\((\w+)\);", d)
@@ -284,7 +557,7 @@ def designer_kumanda_yaz(designer: str, plan: dict) -> tuple[str, list[str]]:
             d = d[:m.start()] + d[son:]
         d, n3 = re.subn(rf"^        private [\w.]+ {ad};\n", "", d, flags=re.M)
 
-    ctl, gerek = kumanda_kontrolleri(plan)
+    ctl, gerek = kumanda_kontrolleri(plan, model)
     anchors = ["            grp_Kumanda = new GroupBox();" + NL, "            grp_Kumanda.BackColor = Color.LightGray;" + NL,
                "            grp_Kumanda.Text = \"KUMANDA\";" + NL, "        private GroupBox grp_Kumanda;" + NL]
     for a in anchors:
@@ -297,21 +570,28 @@ def designer_kumanda_yaz(designer: str, plan: dict) -> tuple[str, list[str]]:
     d = d.replace(anchors[2], anchors[2] + blok, 1)
     d = d.replace(anchors[3], anchors[3] + "".join(f"        private {t} {a};{NL}" for a, t, _ in ctl), 1)
 
-    # yerlesim: kumanda grubu 200..627 (tasarim yuksekligi 681); sigmazsa yukari uzar, KJ listesi kisalir
-    ust = 200
-    if gerek > 427:
-        ust = max(120, 627 - gerek)
-        if 627 - ust < gerek:
+    # yerlesim (tasarim yuksekligi 681). Kumanda 427 px'e sigiyorsa: KJ listesi ustte boydan boya, kumanda sag altta.
+    # Sigmiyorsa (ISIMLER listesi, FON, cok buton): canli uygulamalardaki gibi listeler solda, kumanda sagda boydan boya.
+    A = "AnchorStyles."
+    if gerek <= 427:
+        yer = {"grp_Kumanda": ((818, 200), (638, 427), f"{A}Bottom | {A}Left | {A}Right"),
+               "pnl_Degerler": ((312, 200), (500, 475), f"{A}Bottom | {A}Left"),
+               "dgv_KjListesi": ((312, 34), (1144, 160), f"{A}Top | {A}Bottom | {A}Left | {A}Right"),
+               "lbl_KjBaslik": ((312, 6), (1144, 24), f"{A}Top | {A}Left | {A}Right")}
+    else:
+        if gerek > 593:
             notlar.append(f"Kumanda paneli cok kalabalik ({gerek} px); bazi kontroller tasabilir, Designer'da duzenleyin.")
-    yuk = 627 - ust
-    for desen, yeni in [(r"grp_Kumanda\.Location = new Point\(818, \d+\)", f"grp_Kumanda.Location = new Point(818, {ust})"),
-                        (r"grp_Kumanda\.Size = new Size\(638, \d+\)", f"grp_Kumanda.Size = new Size(638, {yuk})"),
-                        (r"pnl_Degerler\.Location = new Point\(312, \d+\)", f"pnl_Degerler.Location = new Point(312, {ust})"),
-                        (r"pnl_Degerler\.Size = new Size\(500, \d+\)", f"pnl_Degerler.Size = new Size(500, {675 - ust})"),
-                        (r"dgv_KjListesi\.Size = new Size\(1144, \d+\)", f"dgv_KjListesi.Size = new Size(1144, {ust - 40})")]:
-        d, n = re.subn(desen, yeni, d)
-        if n != 1:
-            raise UretimHatasi("Main.Designer.cs yerlesim satiri bulunamadi: " + desen)
+        yer = {"grp_Kumanda": ((818, 34), (638, 593), f"{A}Top | {A}Bottom | {A}Left | {A}Right"),
+               "pnl_Degerler": ((312, 375), (500, 300), f"{A}Bottom | {A}Left"),
+               "dgv_KjListesi": ((312, 34), (500, 335), f"{A}Top | {A}Bottom | {A}Left"),
+               "lbl_KjBaslik": ((312, 6), (500, 24), f"{A}Top | {A}Left")}
+    for ad, (konum, boyut, capa) in yer.items():
+        for desen, yeni in [(rf"{ad}\.Location = new Point\(\d+, \d+\)", f"{ad}.Location = new Point({konum[0]}, {konum[1]})"),
+                            (rf"{ad}\.Size = new Size\(\d+, \d+\)", f"{ad}.Size = new Size({boyut[0]}, {boyut[1]})"),
+                            (rf"{ad}\.Anchor = [^;]+", f"{ad}.Anchor = {capa}")]:
+            d, n = re.subn(desen, yeni, d)
+            if n != 1:
+                raise UretimHatasi("Main.Designer.cs yerlesim satiri bulunamadi: " + desen)
     return d, notlar
 
 
@@ -421,7 +701,7 @@ def uret(plan_yolu: str, hedef: str, guncelle: bool = False, arayuz: bool = Fals
             json.dump(ornek_liste(plan, model), f, ensure_ascii=False, indent=2)
         # Designer kumanda paneli
         dp = os.path.join(proje, "Main.Designer.cs")
-        d, notlar = designer_kumanda_yaz(open(dp, encoding="utf-8-sig").read(), plan)
+        d, notlar = designer_kumanda_yaz(open(dp, encoding="utf-8-sig").read(), plan, model)
         open(dp, "w", encoding="utf-8-sig").write(d)
         rapor += notlar
         # depo dosyalari
@@ -445,6 +725,10 @@ def uret(plan_yolu: str, hedef: str, guncelle: bool = False, arayuz: bool = Fals
         if not os.path.isdir(proje):
             raise UretimHatasi(f"Proje klasoru yok: {proje} (yeni uygulama icin --guncelle olmadan calistirin)")
         rapor += sahne_yolunu_guncelle(proje, plan)
+        yenilendi = sablonu_yenile(proje, plan)
+        if yenilendi:
+            rapor += yenilendi
+            arayuz = True   # yeni mantik panelde yeni kontroller bekler; panel yeniden dizilir
         eski_plan = os.path.join(hedef, "kumanda.json")
         if os.path.exists(eski_plan):
             eski = json.load(open(eski_plan, encoding="utf-8"))
@@ -457,7 +741,7 @@ def uret(plan_yolu: str, hedef: str, guncelle: bool = False, arayuz: bool = Fals
                     rapor.append(f"{alan}: eklendi -> {sorted(b - a)}")
         if arayuz:
             dp = os.path.join(proje, "Main.Designer.cs")
-            d, notlar = designer_kumanda_yaz(open(dp, encoding="utf-8-sig").read(), plan)
+            d, notlar = designer_kumanda_yaz(open(dp, encoding="utf-8-sig").read(), plan, model)
             open(dp, "w", encoding="utf-8-sig").write(d)
             rapor += notlar + ["Kumanda paneli yeniden dizildi."]
         elif any(x.startswith(("bantlar:", "kulakciklar:", "ozeller:", "ogeler:")) for x in rapor):
@@ -466,7 +750,9 @@ def uret(plan_yolu: str, hedef: str, guncelle: bool = False, arayuz: bool = Fals
 
     # her iki modda: sahneye bagli dosyalar
     with open(os.path.join(proje, "KjTipleri.Sahne.cs"), "w", encoding="utf-8-sig") as f:
-        f.write(sahne_cs(plan))
+        f.write(sahne_cs(plan, model))
+    with open(os.path.join(proje, "KelebekTipleri.Sahne.cs"), "w", encoding="utf-8-sig") as f:
+        f.write(_kelebek.sahne_cs(plan, _cs))
     vs = os.path.join(proje, "VizScenes")
     os.makedirs(vs, exist_ok=True)
     for eski in os.listdir(vs):

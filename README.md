@@ -5,6 +5,11 @@ Viz Engine sahnesinden **C# WinForms reji kumanda uygulaması** üreten araç.
 Viz Artist'te açık bir KJ sahnesine bakar, içindeki grafiklerden (bantlar, kulakçıklar,
 isimlik, logo vb.) reji panelini çıkarır ve çalışır bir Visual Studio çözümü yazıp derler.
 Sahne değişince aynı uygulamayı günceller; elle eklenen kod ve butonlar korunur.
+Kelebek (bölünmüş ekran) sahneleri de taranıp uygulamaya KELEBEK penceresi olarak eklenir.
+
+Uygulamanın sahneyi nasıl sürdüğü (hangi animasyon ne zaman oynar, AL ne gönderir, isim ve
+telefon nasıl değişir) canlıda çalışan reji uygulamalarının kodu okunarak çıkarıldı:
+[REJI_KALIPLARI.md](REJI_KALIPLARI.md).
 
 Sahneye, engine'e ve veritabanına **hiçbir şey yazmaz**; yalnızca okur ve yalnızca
 bu bilgisayardaki engine'e (127.0.0.1) bağlanır.
@@ -49,6 +54,24 @@ Sahneyi yeniden tarayın, **Reji uygulaması** sekmesinde **Mevcut uygulamayı g
 Sahnede yeni çıkanlar "sahnede yeni", kalkanlar "sahnede yok" diye işaretlenir.
 İstediklerinizi seçip **Güncelle ve derle** düğmesine basın.
 
+### Kelebek eklemek
+
+Kelebekler KJ sahnesinden ayrı sahnelerdir; uygulamada **KELEBEK** penceresinden, ikinci motorla
+(GRAFİK-1) verilir. viztools Graphic Hub klasörünün içini okuyamaz; kelebekler şu üç yoldan
+biriyle tanıtılır (**Reji uygulaması** sekmesi, "Kelebek klasörü" kutusunun altı):
+
+1. **Arşivden topluca:** Artist'te kelebek klasörünü tek bir `.via` olarak dışa aktarın
+   (Masaüstü, İndirilenler ya da `samples` klasörüne koyun). Klasörün Graphic Hub yolunu
+   kutuya yazın, arşivi seçip **Arşivdeki kelebekleri topluca al** deyin.
+2. **Tek tek:** kelebek sahnesini Artist'te açıp **Sahneyi tara** deyin.
+3. **Adıyla:** yalnızca Show TV adlandırmasını kullanan kelebekler için (`ISIM1`, `TITLE1`,
+   `isimlik_bg_1`; pencere sayısı addaki `2LI` / `3LU`'dan). Adları yazıp **Adıyla ekle** deyin.
+   Sahne taranmadığı için adlar farklıysa uygulama yanlış alana yazar; emin değilseniz 1 ya da 2.
+
+Sonra listeden eklenecekleri işaretleyip üretin ya da güncelleyin. Aynı adlı sahne (ör.
+`3LU_SAG_DSF`) her programda ayrı bir sahnedir; listede her kelebeğin tam yolu yazar, kaynak
+süzgeciyle yalnızca o programın kelebeklerini gösterebilirsiniz.
+
 ### Claude ile
 
 `kur.bat` çalıştırıldıysa Claude Code'da bu klasörü açıp şöyle yazmak yeterlidir:
@@ -62,28 +85,50 @@ Sahnede yeni çıkanlar "sahnede yeni", kalkanlar "sahnede yok" diye işaretleni
 ```
 python vizapp.py --ad "NTR Program" --sahne /YOL/KJ_SAHNESI --hedef C:\Users\<kullanıcı>\source\repos\NTR_Program
 python vizapp.py --sahne /YOL/KJ_SAHNESI --hedef <uygulama klasörü> --guncelle
+python vizapp.py ... --kelebek /YOL/KELEBEK --kelebek-via kelebekler.via --kelebekler hepsi
 ```
 
 ## Panelde ne olur
 
 | Bölüm | Açıklama |
 |---|---|
-| TEKLİ / ÇİFTLİ KJ VER, KJ AL | Ana butonlar |
-| BANT | Tek seçimli: NORMAL, YAS, SON DAKİKA, AZ SONRA ... |
+| TEKLİ / ÇİFTLİ KJ VER, KJ AL (F7) | Ana butonlar. Yayındayken yeni yazı verilince grafik alınmadan değişir; çiftlide alt satır boşsa tekli verilir |
+| BANT | Tek seçimli: NORMAL, YAS, SON DAKİKA, AZ SONRA ... Satır satır kurulmuş bantlar (üst ve alt satır ayrı animasyon) da desteklenir |
 | KULAKÇIK | Bandın üstüne eklenen grafik: 4.5G, SKYPE, TELEFON ... |
-| Özel butonlar | İSİMLİK, LOKASYON gibi tek satırlı türler |
-| Öğeler | Metinsiz grafikler, ayrı VER / AL: logo, kapak ... |
-| TÜMÜNÜ AL | Yayındaki her şeyi alır |
+| FON | Zemin / renk seçimi (dosya yolları sahneden okunamaz; `ogrenilen` klasöründen ya da plandan gelir) |
+| İSİMLER listesi | İsim + ünvan; İSİM VER (F3), TELEFON VER (F2), AL (F4) buradan okur |
+| Özel butonlar | İSİM, TELEFON, LOKASYON ... Banttan bağımsızdır, kendi AL'ı vardır; lokasyon gibi etiketlerin kendi yazı kutusu olur |
+| Öğeler | Ayrı VER / AL: logo (yazılı olabilir, "KJ ile" verilebilir), kapak, ürün yerleştirme (süreli) ... |
+| TÜMÜNÜ AL (F8) | Her şeyi alır; bandı, isim / telefonu ve logoyu duruma bakmadan gönderir |
+| KELEBEK | Ayrı pencere: kelebek listesi, pencere başına isim + ünvan, VER / AL / GÜNCELLE |
+
+AL butonları duruma bakmadan gönderir: uygulama yeniden açıldığında ekranda kalan grafik de alınabilir.
+Buton yazısının sonundaki `(F3)` gibi tuş o butonun kısayoludur; Designer'da yazıyı değiştirmek yeter.
 
 ## Kurallar
 
 - Yalnızca `127.0.0.1`. Araç başka adrese bağlanmaz; yazma komutları (SET, START, LOAD, SAVE ...) gönderilmeden reddedilir.
 - Üretilen uygulama da geliştirmede yalnızca `127.0.0.1`'e bağlanır (`ShowData\IpList.txt`).
 - Araç yalnızca kendi ürettiği uygulamaları (klasöründe `kumanda.json` olanları) günceller.
+- viztools açıkken engine'e tek bir bağlantı tutar, kapanınca kapatır.
+
+## Sahneye özel öğrenilmiş ayarlar
+
+FON dosya yolları, logonun yazı alanı, buton adları gibi sahneden okunamayan bilgiler
+`ogrenilen\<sahne adı>.json` dosyasında durur. Taranan sahnenin adı bu dosyalardan biriyle aynıysa
+analiz onu kendiliğinden uygular; sahne yeniden taranıp sıfırdan üretildiğinde de aynı sonuç çıkar.
+Şu an: `HT_SPOR_KJ_v5.json`, `2026_HT_KJ_V02.json`. Sahnenin adı değişirse dosya da yeniden adlandırılır.
 
 ## Henüz yok
 
-ROLL / sayfalı akışlar ve kelebek formları üretilmez; uygulamaya elle eklenir.
+- ROLL / sayfalı akışlar.
+- Kelebekte kayıtlı listeler ve ekran yerleşimi önizlemesi.
+- Sarı bant, yas modu gibi banda özel klip seçimleri.
+- Yazı rengi ve görünürlük grupları; başka sahne ya da katman kullanan butonlar (separatör, imaj, tanıtım).
+- Haber akışı (veritabanı). KJ ve isim listeleri dosyadan gelir.
+
+Bunlar uygulamaya elle eklenir. Uygulamanın sahneyi nasıl sürdüğü ve canlı uygulamalardan
+öğrenilen kurallar: `REJI_KALIPLARI.md`.
 
 ## Diğer belgeler
 
@@ -264,6 +309,13 @@ Claude'un göreceği araçlar:
 
 ## Dosyalar
 
+- `vizengine/analiz.py`: sahneden bant, kulakçık, özel tür, öğe çıkarımı
+- `vizengine/kelebek.py`: kelebek sahnesi tanıma, arşivden toplu içe alma
+- `vizengine/uretec.py`: C# üretici; `vizengine/uygulama.py`: üretim akışı ve plan onarımı
+- `vizapp.py`, `vizuret.py`: sahneden / plandan üretim (komut satırı)
+- `sablon/winforms/`: uygulama şablonu (sahneden bağımsız kod)
+- `ogrenilen/`: sahneye özel, canlı uygulamalardan öğrenilmiş ayarlar
+- `REJI_KALIPLARI.md`: canlı uygulamalardan öğrenilen reji ve kelebek kuralları
 - `vizengine/client.py`: TCP istemci ve salt okunur komut filtresi
 - `vizengine/parse.py`: `TREE GET` ve `STAGE GET` çözümleyicileri
 - `vizengine/template.py`: sahne modeli, Markdown şablon, dosya yazma

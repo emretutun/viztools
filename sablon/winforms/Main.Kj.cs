@@ -1,7 +1,9 @@
 using System.Globalization;
+using System.Text.Json;
 
 namespace __NS__
 {
+    // viztools-sablon: 7
     /// <summary>
     /// KJ blogu: bolum/KJ listeleri (kj_list.json), duzenleme, VER/AL, acil durum, TUMUNU AL.
     ///
@@ -10,7 +12,20 @@ namespace __NS__
     ///  - KULAKCIK : YOK + KjTipleri.Kulakciklar (bandin ustune eklenir; metin yazilmaz)
     /// TEKLI / CIFTLI butonu: secili bandin tekli/ciftli halini verir (TEKLI yalnizca ust satir),
     /// kulakcik seciliyse onu da yanina ekler. KJ AL ikisini birlikte alir.
-    /// Ayni bant yayindayken yeni metin dogrudan IN; farkli bant: once OUT, bekleme, sonra IN.
+    /// Yayin durumu ALAN bazinda tutulur: bant turleri "altbant" alanini paylasir; ozel turler (ISIM, TELEFON,
+    /// LOKASYON...) kendi alanindadir, bant ekrandayken verilir ve kendi AL butonuyla alinir.
+    /// Ayni alanda:
+    ///  - ayni tur yayindayken yeni metin: grafik alinmaz; turun yuvasi varsa siradaki yuvaya gecilir, yoksa giris yeniden oynar
+    ///  - cikisi ortak olan baska tur (tekli/ciftli, KJ_FULL_OUT gibi): dogrudan IN
+    ///  - baska tur: once OUT, bekleme, sonra IN
+    /// Ozel turun metni Kaynak'a gore gelir: "liste" (KJ listesi), "isim" (ISIMLER listesi), "kutu" (butonun ustundeki kutu).
+    /// Ayni metin yeniden verilirse bir sey gonderilmez. CIFTLI'de alt satir bossa tekli verilir.
+    /// FON kutusu varsa secilen zemin VER'den once gonderilir. Buton yazisinin sonundaki (F3) gibi tus o butonun kisayoludur.
+    /// AL butonlari canli uygulamalardaki gibi duruma bakmadan gonderir: KJ AL ekranda bant gorunmuyorsa secili bandin
+    /// cikisini, ozel AL o alandaki turlerin cikislarini oynatir (uygulama yeniden acildiginda ekranda kalan grafik alinabilsin).
+    /// TUMUNU AL ayrica ana bandin, isim / telefon turlerinin ve yazili logonun cikisini her zaman gonderir.
+    /// Satir bazli bantta (tur.AltTur dolu) ust ve alt satir ayri animasyonla girer: TEKLI ust satiri, CIFTLI ust satirin
+    /// ardindan alt satiri verir; CIFTLI'den TEKLI'ye gecerken alt satir alinir.
     /// Satir secilince bant ve kulakcik satirin degerlerine gore kendiliginden secilir; reji degistirebilir.
     /// Sahneye ait her sey (turler, bantlar, kulakciklar, ozel turler, ogeler) KjTipleri.Sahne.cs'tedir;
     /// bu dosya sahneden bagimsizdir. Butonlar Tag ile baglanir: btn_ozel_*_ver (Tag = tur kodu),
@@ -19,10 +34,23 @@ namespace __NS__
     public partial class Main
     {
         // ---- yayin durumu ----
-        private KjTipi? yayindakiKj;          // ekrandaki bant (metinli KJ)
+        private sealed record AlanDurumu(KjTipi Tip, int Yuva, string Ust, string Alt, int AltYuva = -1);   // AltYuva: satir bazli bantta alt satirin yuvasi (-1 = yok)
+        private readonly Dictionary<string, AlanDurumu> yayin = new();   // alan -> ekrandaki tur ve yuvasi
+        private KjTipi? yayindakiKj => yayin.TryGetValue(KjTipleri.BantAlani, out var d) ? d.Tip : null;   // ekrandaki bant
         private string aktifKulakcik = "";     // ekrandaki kulakcik anahtari ("" = yok)
         private bool kjMesgul;                 // OUT->IN gecisi surerken yeni tiklamalari yut
         private const int TurGecisBeklemeMs = 700;
+        private const int KulakcikGecisBeklemeMs = 400;
+        private const int OzelGecisBeklemeMs = 400;    // isim <-> telefon gibi ayni yeri paylasan ozel turler arasi
+        private const int OzelDegisBeklemeMs = 600;    // yuvasi olmayan ozel turde yazi degisimi: OUT, bekleme, IN
+        private const int SatirBeklemeMs = 1000;       // satir bazli bantta ust satir ile alt satir arasi
+        private const int ResimBeklemeMs = 250;        // resim gonderildikten sonra giris oncesi
+        private const int BantAlmaBeklemeMs = 300;     // bandi alan oge icin
+        private const int TiklamaEngeliMs = 600;       // ayni alana art arda tiklama yutulur
+        private readonly Dictionary<string, DateTime> sonVer = new();
+        private readonly Dictionary<string, string> resimDosyalari = new(StringComparer.OrdinalIgnoreCase);   // tur kodu -> secilen dosya
+        private readonly Dictionary<string, System.Windows.Forms.Timer> otoAl = new();                     // oge anahtari -> sureli alma
+        private const string IsimDosyasi = "isimler.json";   // kj_list.json ile ayni klasorde
 
         private int yayindakiSatir = -1;       // listede kirmiziya boyanan satir
 
@@ -40,6 +68,16 @@ namespace __NS__
         private static string Hucre(DataGridViewRow row, string kolon) => row.Cells[kolon].Value?.ToString() ?? "";
 
         private string Sahne => SDC.KJ_Scenes;
+
+        private static bool TagEsit(Control c, string? deger) =>
+            string.Equals(c.Tag as string, deger, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Kumanda panelindeki uretilmis kontrol: ad on eki + Tag.</summary>
+        private T? Kontrol<T>(string onEk, string? tag) where T : Control =>
+            grp_Kumanda.Controls.OfType<T>().FirstOrDefault(c => c.Name.StartsWith(onEk) && TagEsit(c, tag));
+
+        private DataGridView? IsimListesi => grp_Kumanda.Controls.OfType<DataGridView>().FirstOrDefault(g => g.Name == "dgv_Isimler");
+        private ComboBox? FonKutusu => grp_Kumanda.Controls.OfType<ComboBox>().FirstOrDefault(c => c.Name == "cmb_Fon");
 
         /// <summary>Sahne yalnizca yuklu degilse yuklenir (her VER'de SCENE LOAD, SET edilen metni ezer).</summary>
         private void SahneyiHazirla()
@@ -81,6 +119,10 @@ namespace __NS__
             foreach (var k in KjTipleri.Kulakciklar) kul.Items.Add(k.Anahtar);
             dgv_KjListesi.Columns.Add(kul);
 
+            // Gereksiz sutunlar gizlenir: tek bantta TUR, kulakcik yoksa KULAKCIK (canli uygulamalardaki gibi yalnizca iki satir)
+            tur.Visible = !KjTipleri.TekBant;
+            kul.Visible = KjTipleri.Kulakciklar.Count > 0;
+
             dgv_KjListesi.Columns.Add(ColS1, "SATIR 1 / ÜST");
             dgv_KjListesi.Columns.Add(ColS2, "SATIR 2 / ALT");
             dgv_KjListesi.Columns[ColS1].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
@@ -92,11 +134,155 @@ namespace __NS__
             dgv_KjListesi.EditMode = DataGridViewEditMode.EditOnKeystrokeOrF2;
             dgv_KjListesi.DataError += (s, e) => e.ThrowException = false; // bilinmeyen kod gridi kilitlemesin
 
-            _btnGrup.AddGroup(btn_KjAl, new[] { btn_tek_ver, btn_cift_ver }.Concat(OzelButonlari()).ToArray());
+            // Kendi AL butonu olan ozel tur ayri gruptur (ayni alani paylasanlar tek AL kullanir);
+            // AL'i olmayan (eski panel) bant grubuna girer ve KJ AL ile alinir
+            _btnGrup.AddGroup(btn_KjAl, new[] { btn_tek_ver, btn_cift_ver }
+                .Concat(OzelButonlari().Where(b => OzelAlButonu(b.Tag as string) == null)).ToArray());
+            foreach (var g in OzelButonlari().GroupBy(b => OzelAlButonu(b.Tag as string)))
+                if (g.Key != null) _btnGrup.AddGroup(g.Key, g.ToArray());
             foreach (var ver in OgeVerButonlari())
                 if (OgeAlButonu(ver.Tag as string) is Button al) _btnGrup.AddGroup(al, ver);
 
             foreach (var k in BantSecicileri().Concat(KulakcikSecicileri())) SeciciRenk(k);
+
+            // AL butonlari hep aciktir (duruma bakmadan gonderir)
+            btn_KjAl.Enabled = true;
+            foreach (var al in grp_Kumanda.Controls.OfType<Button>().Where(b => b.Name.StartsWith("btn_ozel_") && b.Name.EndsWith("_al"))) al.Enabled = true;
+
+            IsimleriHazirla();
+            if (FonKutusu is { } fon)
+            {
+                fon.Items.Clear();
+                foreach (var f in KjTipleri.FonSecenekleri) fon.Items.Add(f);
+                int i = fon.Items.IndexOf(KjTipleri.FonVarsayilan);
+                if (fon.Items.Count > 0) fon.SelectedIndex = Math.Max(0, i);
+            }
+            KeyPreview = true;
+            KeyDown += Kisayol_KeyDown;
+
+            // KELEBEK: sahneleri KelebekTipleri.Sahne.cs'te; ikinci motorda (GRAFIK-1) calisir
+            btn_Kelebek.Enabled = KelebekTipleri.Tumu.Count > 0;
+            btn_Kelebek.Click += (s, e) =>
+            {
+                if (kelebekForm == null || kelebekForm.IsDisposed) kelebekForm = new KelebekForm(VizGrafik, (a, b) => Log.Log(a, b));
+                kelebekForm.Show();
+                kelebekForm.Activate();
+            };
+        }
+
+        private KelebekForm? kelebekForm;
+
+        /// <summary>
+        /// Kisayol: buton yazisinin sonundaki "(F3)" gibi tus o butona basar. F7 / F8 Main.cs'te islenir.
+        /// Tusu degistirmek icin Designer'da buton yazisini degistirmek yeter.
+        /// </summary>
+        private void Kisayol_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Modifiers != Keys.None || e.KeyCode < Keys.F1 || e.KeyCode > Keys.F12 || e.KeyCode is Keys.F7 or Keys.F8) return;
+            string ek = "(" + e.KeyCode + ")";
+            var b = grp_Kumanda.Controls.OfType<Button>().FirstOrDefault(x => x.Text.TrimEnd().EndsWith(ek, StringComparison.OrdinalIgnoreCase));
+            if (b == null) return;
+            e.Handled = e.SuppressKeyPress = true;
+            Log?.Reji("Kısayol", b.Text);
+            if (b.Enabled) b.PerformClick();
+        }
+
+        // =====================================================================
+        //  ISIMLER LISTESI (isim + unvan; ISIM / TELEFON gibi ozel turlerin metin kaynagi)
+        // =====================================================================
+        private void IsimleriHazirla()
+        {
+            if (IsimListesi is not { } g) return;
+            g.Columns.Clear();
+            g.Columns.Add("col_isim", "İSİM");
+            g.Columns.Add("col_titr", "TİTR / ÜNVAN");
+            g.Columns[0].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+            g.Columns[1].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+            g.DefaultCellStyle.BackColor = Color.Honeydew;
+            g.EditMode = DataGridViewEditMode.EditOnKeystroke;   // F2 kisayol olarak kullanilabilsin
+            g.Rows.Clear();
+            try
+            {
+                var liste = File.Exists(IsimDosyasi)
+                    ? JsonSerializer.Deserialize<List<IsimKaydi>>(File.ReadAllText(IsimDosyasi)) ?? new List<IsimKaydi>()
+                    : KjTipleri.IsimOrnekleri.Select(x => new IsimKaydi { Isim = x.Isim, Titr = x.Titr }).ToList();
+                foreach (var k in liste) g.Rows.Add(k.Isim, k.Titr);
+            }
+            catch (Exception ex)
+            {
+                Log.Log("İSİMLER", "isimler.json okunamadı: " + ex.Message);
+            }
+        }
+
+        private void IsimleriKaydet()
+        {
+            if (IsimListesi is not { } g) return;
+            g.EndEdit();
+            var liste = new List<IsimKaydi>();
+            foreach (DataGridViewRow r in g.Rows)
+            {
+                if (r.IsNewRow) continue;
+                string isim = r.Cells[0].Value?.ToString() ?? "", titr = r.Cells[1].Value?.ToString() ?? "";
+                if (isim.Trim().Length + titr.Trim().Length > 0) liste.Add(new IsimKaydi { Isim = isim, Titr = titr });
+            }
+            try
+            {
+                var ayar = new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+                File.WriteAllText(IsimDosyasi, JsonSerializer.Serialize(liste, ayar));
+                Log.Log("İSİMLER", $"Kaydedildi ({liste.Count} satır)");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("isimler.json yazılamadı: " + ex.Message, "Kayıt hatası", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btn_IsimKaydet_Click(object? sender, EventArgs e) => IsimleriKaydet();
+
+        private void btn_IsimSil_Click(object? sender, EventArgs e)
+        {
+            if (IsimListesi is not { } g) return;
+            var r = g.SelectedRows.Count > 0 ? g.SelectedRows[0] : g.CurrentRow;
+            if (r == null || r.IsNewRow) return;
+            g.Rows.Remove(r);
+            IsimleriKaydet();
+        }
+
+        /// <summary>Fotografli tur icin GOZAT (Tag = tur kodu). Dosya yolu engine'in gorebildigi bir yol olmalidir.</summary>
+        private void btn_ozel_gozat_Click(object? sender, EventArgs e)
+        {
+            if (sender is not Button b || b.Tag is not string kod) return;
+            using var d = new OpenFileDialog { Filter = "Resimler|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tga|Tüm dosyalar|*.*" };
+            if (d.ShowDialog(this) != DialogResult.OK) return;
+            var lbl = Kontrol<Label>("lbl_ozel_", kod);
+            if (d.FileName.Contains(' '))
+            {
+                resimDosyalari.Remove(kod);
+                if (lbl != null) lbl.Text = "DOSYA ADINDA BOŞLUK VAR!";
+                return;
+            }
+            resimDosyalari[kod] = d.FileName;
+            if (lbl != null) lbl.Text = Path.GetFileName(d.FileName);
+        }
+
+        /// <summary>FON (zemin) ayarlarini secime gore gonderir. Hedef: alan, tur kodu ya da oge anahtari.</summary>
+        private void FonUygula(params string?[] hedefler)
+        {
+            if (FonKutusu is not { } kutu || KjTipleri.FonAyarlari.Count == 0) return;
+            foreach (var a in KjTipleri.FonAyarlari)
+            {
+                if (!hedefler.Any(h => string.Equals(h, a.Hedef, StringComparison.OrdinalIgnoreCase))) continue;
+                if (!a.Degerler.TryGetValue(kutu.Text, out var deger) && !a.Degerler.TryGetValue("*", out deger)) continue;
+                switch (a.Tip)
+                {
+                    case "imageclip": VizReji.SetImageClipFile(Sahne, a.Yol, deger); break;
+                    case "image": VizReji.SetImageFile(Sahne, a.Yol, deger); break;
+                    case "director":
+                        if (deger.Equals("REVERSE", StringComparison.OrdinalIgnoreCase)) VizReji.StartReverse(Sahne, a.Yol);
+                        else VizReji.Start(Sahne, a.Yol);
+                        break;
+                }
+            }
         }
 
         // =====================================================================
@@ -323,18 +509,88 @@ namespace __NS__
         }
 
         private IEnumerable<Button> OzelButonlari() =>
-            grp_Kumanda.Controls.OfType<Button>().Where(b => b.Name.StartsWith("btn_ozel_"));
+            grp_Kumanda.Controls.OfType<Button>().Where(b => b.Name.StartsWith("btn_ozel_") && b.Name.EndsWith("_ver"));
+
+        /// <summary>Ozel turun AL butonu: Tag = turun alani (ayni alani paylasanlar tek AL kullanir) ya da tur kodu.</summary>
+        private Button? OzelAlButonu(string? kod)
+        {
+            var tip = KjTipleri.Bul(kod);
+            return grp_Kumanda.Controls.OfType<Button>().FirstOrDefault(b => b.Name.StartsWith("btn_ozel_") && b.Name.EndsWith("_al")
+                && (TagEsit(b, kod) || (tip != null && TagEsit(b, tip.Alan))));
+        }
+
+        /// <summary>Ozel tur AL butonlarinin ortak olayi (Tag = alan ya da tur kodu): o alanda ekranda ne varsa alir.</summary>
+        private void btn_ozel_al_Click(object? sender, EventArgs e)
+        {
+            if (sender is not Button al || al.Tag is not string hedef) return;
+            if (VizReji == null || !VizReji.isConnected) return;
+            string alan = KjTipleri.Tumu.Any(t => string.Equals(t.Alan, hedef, StringComparison.OrdinalIgnoreCase))
+                ? hedef : KjTipleri.Bul(hedef)?.Alan ?? hedef;
+            var anahtar = yayin.Keys.FirstOrDefault(k => string.Equals(k, alan, StringComparison.OrdinalIgnoreCase));
+            if (anahtar != null)
+            {
+                Log.Log(yayin[anahtar].Tip.Etiket + " ALINDI", "");
+                AlanAl(anahtar, komut: true);
+            }
+            else   // uygulamanin kaydinda yok: yine de o alandaki turlerin cikislarini gonder
+            {
+                CikislariGonder(KjTipleri.Tumu.Where(t => string.Equals(t.Alan, alan, StringComparison.OrdinalIgnoreCase)));
+                Log.Log(alan.ToUpper(Tr) + " AL (zorla)", "");
+            }
+            YayinDurumunuYaz();
+        }
 
         private void btn_KjAl_Click(object? sender, EventArgs e) => KjAl();
+
+        /// <summary>Turun AL butonu: ozel turun kendi AL'i, yoksa KJ AL.</summary>
+        private Button AlButonu(KjTipi tip) => OzelAlButonu(tip.Kod) ?? btn_KjAl;
+
+        /// <summary>Verilen turlerin cikislarini (yuva cikislari dahil, her biri bir kez) gonderir.</summary>
+        private void CikislariGonder(IEnumerable<KjTipi> turler)
+        {
+            foreach (var cikis in turler.SelectMany(t => t.Cikislar).Distinct().ToList()) VizReji.Start(Sahne, cikis);
+        }
+
+        /// <summary>Alandaki grafigi kayittan duser, istenirse cikisini oynatir ve butonlarini eski haline getirir.</summary>
+        private void AlanAl(string alan, bool komut)
+        {
+            if (!yayin.Remove(alan, out var d)) return;
+            if (komut) foreach (var cikis in d.Tip.Cikislar) VizReji.Start(Sahne, cikis);
+            var al = AlButonu(d.Tip);
+            if (yayin.Values.All(x => AlButonu(x.Tip) != al))   // ayni AL'i kullanan baska grafik kalmadiysa
+            {
+                _btnGrup.HandleAlClick(al);
+                al.Enabled = true;   // AL hep acik kalir
+            }
+        }
 
         private async Task KjVerAsync(KjTipi? tip, Button buton, bool cift, bool kulakcikla)
         {
             if (VizReji == null || !VizReji.isConnected || kjMesgul) return;
             if (tip == null) { MessageBox.Show("Bu tür sahnede tanımlı değil."); return; }
 
-            // Metin: acil durumda kutulardan, degilse secili satirdan. TEKLI yalnizca ust satiri verir.
+            bool bant = tip.Alan == KjTipleri.BantAlani;
+            string kaynak = bant ? "liste" : tip.Kaynak;
+            bool listeden = false;
+
+            // Metin: ozel turde kaynagina gore (ISIMLER listesi / kendi kutusu); bantta acil durumda kutulardan,
+            // degilse secili KJ satirindan. TEKLI yalnizca ust satiri verir.
             string ust, alt;
-            if (cbx_AcilDurum.Checked)
+            if (kaynak == "isim" && IsimListesi is { } isimler)
+            {
+                isimler.EndEdit();
+                var r = isimler.SelectedRows.Count > 0 ? isimler.SelectedRows[0] : isimler.CurrentRow;
+                if (r == null || r.IsNewRow) { MessageBox.Show("İSİMLER listesinden bir satır seçin."); return; }
+                ust = r.Cells[0].Value?.ToString() ?? "";
+                alt = r.Cells[1].Value?.ToString() ?? "";
+            }
+            else if (kaynak == "kutu" && Kontrol<TextBox>("txt_ozel_", tip.Kod) is { } kutu)
+            {
+                ust = kutu.Text;
+                alt = "";
+                if (ust.Trim().Length == 0) { MessageBox.Show(tip.Etiket + " yazısını yazın."); return; }
+            }
+            else if (cbx_AcilDurum.Checked)
             {
                 ust = txt_AcilUst.Text;
                 alt = txt_AcilAlt.Text;
@@ -346,34 +602,101 @@ namespace __NS__
                 dgv_KjListesi.EndEdit();
                 ust = Hucre(row, ColS1);
                 alt = Hucre(row, ColS2);
+                listeden = true;
             }
             if (!cift) alt = "";
+
+            // CIFTLI'de alt satir bossa tekli verilir (canli uygulamalardaki gibi)
+            if (bant && cift && string.IsNullOrWhiteSpace(alt) && KjTipleri.Coz(SeciliBantAnahtari(), cift: false) is { } tek)
+            {
+                tip = tek;
+                buton = btn_tek_ver;
+                cift = false;
+            }
+
+            // Fotografli tur: dosya adinda bosluk olmamali (engine komutu bosluktan boler)
+            string? resim = null;
+            if (tip.Resim != null)
+            {
+                resimDosyalari.TryGetValue(tip.Kod, out resim);
+                if (string.IsNullOrWhiteSpace(resim)) resim = tip.ResimVarsayilan;
+            }
+
+            // Ayni alana art arda tiklama yutulur
+            if (sonVer.TryGetValue(tip.Alan, out var son) && (DateTime.Now - son).TotalMilliseconds < TiklamaEngeliMs) return;
+            sonVer[tip.Alan] = DateTime.Now;
 
             kjMesgul = true;
             try
             {
-                SahneyiHazirla();
+                yayin.TryGetValue(tip.Alan, out var onceki);
 
-                // Ayni alanda baska bant yayindaysa: once OUT, bekle
-                if (yayindakiKj != null && yayindakiKj != tip && yayindakiKj.Alan == tip.Alan)
+                // Ayni tur ayni metinle zaten ekranda: bir sey gonderme
+                if (onceki != null && onceki.Tip == tip && onceki.Ust == ust && onceki.Alt == alt)
                 {
-                    VizReji.Start(Sahne, yayindakiKj.Cikis);
-                    yayindakiKj = null;
-                    await Task.Delay(TurGecisBeklemeMs);
+                    if (listeden) SonrakiSatiraGec();
+                    return;
                 }
 
-                VizReji.SetTextPath(Sahne, tip.Ust, ust);
-                if (tip.Alt != null) VizReji.SetTextPath(Sahne, tip.Alt, alt);
-                VizReji.Start(Sahne, tip.Giris);   // ayni bant yayindaysa da dogrudan IN (metin degisimi)
-                yayindakiKj = tip;
+                SahneyiHazirla();
 
-                // Kulakcik: secili olan ekrandakinden farkliysa eskisini al, yenisini ver
-                KulakcigiGuncelle(kulakcikla ? SeciliKulakcikAnahtari() : "");   // ozel tur verilince kulakcik da alinir (bandin parcasi)
+                // Ayni alanda baska tur yayinda. Cikislari ortaksa (tekli <-> ciftli) dogrudan IN; degilse once OUT, bekle.
+                if (onceki != null && onceki.Tip != tip)
+                {
+                    bool ortakCikis = onceki.Tip.Cikis == tip.Cikis;
+                    AlanAl(tip.Alan, komut: !ortakCikis);
+                    if (!ortakCikis) await Task.Delay(bant ? TurGecisBeklemeMs : OzelGecisBeklemeMs);
+                    onceki = null;
+                }
+                // Yuvasi olmayan ozel tur yayindayken yeni yazi (canli uygulamalardaki gibi): OUT, bekleme, sonra IN
+                else if (onceki != null && !bant && tip.Yuvalar.Count == 0)
+                {
+                    foreach (var c in tip.Cikislar) VizReji.Start(Sahne, c);
+                    await Task.Delay(OzelDegisBeklemeMs);
+                }
+
+                if (tip.AltTur != null && KjTipleri.Bul(tip.AltTur) is { } altTip)
+                {
+                    FonUygula(tip.Alan, tip.Kod);
+                    yayin[tip.Alan] = SatirliVer(tip, altTip, onceki, ust, alt, cift, out int bekle1, out Action? sonra);
+                    if (sonra != null)
+                    {
+                        await Task.Delay(bekle1);
+                        sonra();
+                    }
+                }
+                else
+                {
+
+                // Ayni tur yayindayken yeni metin: yuvasi varsa siradaki yuvaya gec (grafik alinmaz)
+                int yuva = onceki != null && tip.Yuvalar.Count > 0 ? (onceki.Yuva + 1) % (tip.Yuvalar.Count + 1) : 0;
+                var (giris, ustYol, altYol, ayirac) = tip.Yuva(yuva);
+
+                FonUygula(tip.Alan, tip.Kod);
+                VizReji.SetTextPath(Sahne, ustYol, ust);
+                if (altYol != null) VizReji.SetTextPath(Sahne, altYol, alt);
+                if (ayirac != null) VizReji.SetActivePath(Sahne, ayirac, !string.IsNullOrWhiteSpace(alt));
+                if (tip.Resim != null && !string.IsNullOrWhiteSpace(resim))
+                {
+                    VizReji.SetImageFile(Sahne, tip.Resim, resim);
+                    await Task.Delay(ResimBeklemeMs);
+                }
+                VizReji.Start(Sahne, giris);
+                yayin[tip.Alan] = new AlanDurumu(tip, yuva, ust, alt);
+                }
+
+                // Kulakcik bandin parcasidir: yalnizca bant verilirken guncellenir; ozel tur kulakciga dokunmaz
+                if (bant) await KulakcigiGuncelleAsync(kulakcikla ? SeciliKulakcikAnahtari() : "");
 
                 _btnGrup.HandleVerClick(buton);
-                btn_KjAl.Enabled = true;
+                AlButonu(tip).Enabled = true;
                 YayinDurumunuYaz();
-                if (!cbx_AcilDurum.Checked) { YayinSatiriniIsaretle(); SonrakiSatiraGec(); }
+                if (listeden) { YayinSatiriniIsaretle(); SonrakiSatiraGec(); }
+
+                // "KJ ile" kutusu isaretli ogeler (yazili logo gibi) bantla birlikte verilir
+                if (bant)
+                    foreach (var c in grp_Kumanda.Controls.OfType<CheckBox>().Where(c => c.Name.StartsWith("cbx_ogekj_") && c.Checked).ToList())
+                        if (KjTipleri.OgeBul(c.Tag as string) is { } o && !yayindakiOgeler.Contains(o.Anahtar)) await OgeVerAsync(o);
                 Log.Log($"KJ VERİLDİ ({tip.Kod}{(aktifKulakcik.Length > 0 ? " + " + aktifKulakcik : "")})", $"Üst: {ust} | Alt: {alt}");
             }
             finally
@@ -382,37 +705,107 @@ namespace __NS__
             }
         }
 
-        private void KulakcigiGuncelle(string hedef)
+        /// <summary>
+        /// Satir bazli bant (canli NTR HT akisi). Hemen gonderilecek komutlari gonderir; beklemeden sonra gonderilecekler
+        /// "sonra" ile doner (cagiran bekle ms bekleyip calistirir). Donus: yeni yayin durumu.
+        ///   ilk giris      : ust yaz, ust IN, alt cikis, alt yuvalari bosalt; ciftliyse bekle, alt yaz, alt IN
+        ///   tekli -> tekli : yazi degistiyse ust satir siradaki yuvaya gecer
+        ///   tekli -> ciftli: ust (degistiyse) doner; alt yaz, alt IN
+        ///   ciftli -> ciftli: degisen satir(lar) kendi yuvasinda doner
+        ///   ciftli -> tekli: alt cikis, bekle, ust (degistiyse) doner
+        /// </summary>
+        private AlanDurumu SatirliVer(KjTipi tip, KjTipi altTip, AlanDurumu? onceki, string ust, string alt, bool cift,
+                                      out int bekle, out Action? sonra)
+        {
+            bekle = 0;
+            sonra = null;
+            void UstYaz(int y) { var (g, yol, _, _) = tip.Yuva(y); VizReji.SetTextPath(Sahne, yol, ust); VizReji.Start(Sahne, g); }
+            void AltYaz(int y) { var (g, yol, _, _) = altTip.Yuva(y); VizReji.SetTextPath(Sahne, yol, alt); VizReji.Start(Sahne, g); }
+            int Sonraki(KjTipi t, int y) => t.Yuvalar.Count > 0 ? (y + 1) % (t.Yuvalar.Count + 1) : 0;
+
+            if (onceki == null)   // ilk giris
+            {
+                UstYaz(0);
+                if (tip.AltCikis != null) VizReji.Start(Sahne, tip.AltCikis);
+                for (int i = 0; i <= altTip.Yuvalar.Count; i++) VizReji.SetTextPath(Sahne, altTip.Yuva(i).Ust, "");
+                if (cift)
+                {
+                    bekle = SatirBeklemeMs;
+                    sonra = () => AltYaz(0);
+                }
+                return new AlanDurumu(tip, 0, ust, alt, cift ? 0 : -1);
+            }
+
+            bool altVar = onceki.AltYuva >= 0;
+            int ustYuva = onceki.Ust == ust ? onceki.Yuva : Sonraki(tip, onceki.Yuva);
+            int altYuva = -1;
+            if (!cift && altVar)   // ciftliden tekliye: once alt satir cikar
+            {
+                if (tip.AltCikis != null) VizReji.Start(Sahne, tip.AltCikis);
+                if (onceki.Ust != ust)
+                {
+                    bekle = SatirBeklemeMs;
+                    sonra = () => UstYaz(ustYuva);
+                }
+                return new AlanDurumu(tip, ustYuva, ust, "", -1);
+            }
+            if (onceki.Ust != ust) UstYaz(ustYuva);
+            if (cift)
+            {
+                altYuva = !altVar ? 0 : onceki.Alt == alt ? onceki.AltYuva : Sonraki(altTip, onceki.AltYuva);
+                if (!altVar || onceki.Alt != alt) AltYaz(altYuva);
+            }
+            return new AlanDurumu(tip, ustYuva, ust, cift ? alt : "", altYuva);
+        }
+
+        /// <summary>Kulakcik degisimi: eskisi cikar, kisa bekleme, yenisi girer (ikisi ayni yerde durur).</summary>
+        private async Task KulakcigiGuncelleAsync(string hedef)
         {
             if (aktifKulakcik == hedef) return;
             var eski = KjTipleri.KulakcikBul(aktifKulakcik);
-            if (eski != null) VizReji.Start(Sahne, eski.Cikis);
             var yeni = KjTipleri.KulakcikBul(hedef);
-            if (yeni != null) VizReji.Start(Sahne, yeni.Giris);
             aktifKulakcik = yeni?.Anahtar ?? "";
+            if (eski != null) VizReji.Start(Sahne, eski.Cikis);
+            if (eski != null && yeni != null) await Task.Delay(KulakcikGecisBeklemeMs);
+            if (yeni != null) VizReji.Start(Sahne, yeni.Giris);
         }
 
+        private void KulakcigiAl()
+        {
+            if (KjTipleri.KulakcikBul(aktifKulakcik) is { } eski) VizReji.Start(Sahne, eski.Cikis);
+            aktifKulakcik = "";
+        }
+
+        /// <summary>KJ AL (F7): bandi ve kulakcigi alir. Kendi AL butonu olmayan ozel turler (eski panel) de bununla alinir.</summary>
         private void KjAl()
         {
             if (VizReji == null || !VizReji.isConnected) return;
-            if (yayindakiKj != null)
+            var alanlar = yayin.Where(x => AlButonu(x.Value.Tip) == btn_KjAl).Select(x => x.Key).ToList();
+            foreach (var alan in alanlar)
             {
-                VizReji.Start(Sahne, yayindakiKj.Cikis);
-                Log.Log("KJ ALINDI", yayindakiKj.Kod);
+                Log.Log("KJ ALINDI", yayin[alan].Tip.Kod);
+                AlanAl(alan, komut: true);
             }
-            KulakcigiGuncelle("");
-            yayindakiKj = null;
+            if (!alanlar.Contains(KjTipleri.BantAlani) && KjTipleri.Coz(SeciliBantAnahtari(), cift: false) is { } secili)
+            {
+                // Kayitta bant yok (uygulama yeniden acilmis olabilir): secili bandin cikisini yine de gonder
+                SahneyiHazirla();
+                CikislariGonder(new[] { secili });
+                Log.Log("KJ AL (zorla)", secili.Kod);
+            }
+            KulakcigiAl();
             _btnGrup.HandleAlClick(btn_KjAl);
-            btn_KjAl.Enabled = false;
+            btn_KjAl.Enabled = true;
             YayinDurumunuYaz();
             YayinIsaretiniTemizle();
         }
 
         private void YayinDurumunuYaz()
         {
-            if (yayindakiKj == null) { lbl_YayinTuru.Text = "YAYINDA: -"; return; }
+            if (yayin.Count == 0) { lbl_YayinTuru.Text = "YAYINDA: -"; return; }
             var kul = KjTipleri.KulakcikBul(aktifKulakcik);
-            lbl_YayinTuru.Text = "YAYINDA: " + yayindakiKj.Etiket + (kul != null ? "  +  " + kul.Etiket : "");
+            var adlar = yayin.OrderBy(x => x.Key != KjTipleri.BantAlani).Select(x => x.Value.Tip.Etiket);
+            lbl_YayinTuru.Text = "YAYINDA: " + string.Join("  |  ", adlar) + (kul != null ? "  +  " + kul.Etiket : "");
         }
 
         // =====================================================================
@@ -426,17 +819,52 @@ namespace __NS__
         private Button? OgeAlButonu(string? anahtar) =>
             grp_Kumanda.Controls.OfType<Button>().FirstOrDefault(b => b.Name.StartsWith("btn_oge_") && b.Name.EndsWith("_al") && (b.Tag as string) == anahtar);
 
-        /// <summary>Metinsiz oge VER butonlarinin ortak olayi (Tag = oge anahtari).</summary>
-        private void btn_oge_ver_Click(object? sender, EventArgs e)
+        /// <summary>Oge VER butonlarinin ortak olayi (Tag = oge anahtari).</summary>
+        private async void btn_oge_ver_Click(object? sender, EventArgs e)
         {
-            if (sender is not Button ver || KjTipleri.OgeBul(ver.Tag as string) is not { } oge) return;
+            if (sender is Button ver && KjTipleri.OgeBul(ver.Tag as string) is { } oge) await OgeVerAsync(oge);
+        }
+
+        private async Task OgeVerAsync(KjTipleri.Oge oge)
+        {
             if (VizReji == null || !VizReji.isConnected) return;
             SahneyiHazirla();
+            if (oge.BandiAl && yayin.ContainsKey(KjTipleri.BantAlani))
+            {
+                KjAl();
+                await Task.Delay(BantAlmaBeklemeMs);
+            }
+            FonUygula(oge.Anahtar);
+            // Yazi: cok satirli kutudan (satirlar oldugu gibi) ya da hazir secenek listesinden
+            string metin = Kontrol<TextBox>("txt_oge_", oge.Anahtar) is { } yazi
+                ? string.Join("\n", yazi.Lines.Select(x => x.Trim()).Where(x => x.Length > 0))
+                : Kontrol<ComboBox>("cmb_oge_", oge.Anahtar)?.Text.Replace("\\n", "\n") ?? "";
+            if (oge.Metin != null && metin.Trim().Length > 0)
+                VizReji.SetTextPath(Sahne, oge.Metin, metin);
+            foreach (var g in oge.Gorunur) VizReji.SetActivePath(Sahne, g, true);
             VizReji.Start(Sahne, oge.Giris);
             yayindakiOgeler.Add(oge.Anahtar);
-            _btnGrup.HandleVerClick(ver);
+            if (OgeVerButonlari().FirstOrDefault(b => TagEsit(b, oge.Anahtar)) is Button ver) _btnGrup.HandleVerClick(ver);
             if (OgeAlButonu(oge.Anahtar) is Button al) al.Enabled = true;
-            Log.Log(oge.Etiket + " VERİLDİ", "");
+            if (oge.OtoAlSn > 0 && (Kontrol<CheckBox>("cbx_ogeoto_", oge.Anahtar)?.Checked ?? true)) OtoAlKur(oge);
+            Log.Log(oge.Etiket + " VERİLDİ", metin.Replace("\n", " / "));
+        }
+
+        /// <summary>Sureli alma: VER'den OtoAlSn saniye sonra oge kendiliginden alinir.</summary>
+        private void OtoAlKur(KjTipleri.Oge oge)
+        {
+            OtoAlDurdur(oge.Anahtar);
+            var t = new System.Windows.Forms.Timer { Interval = oge.OtoAlSn * 1000 };
+            t.Tick += (s, e) => OgeAl(oge.Anahtar);
+            otoAl[oge.Anahtar] = t;
+            t.Start();
+        }
+
+        private void OtoAlDurdur(string anahtar)
+        {
+            if (!otoAl.Remove(anahtar, out var t)) return;
+            t.Stop();
+            t.Dispose();
         }
 
         /// <summary>Metinsiz oge AL butonlarinin ortak olayi (Tag = oge anahtari).</summary>
@@ -447,7 +875,9 @@ namespace __NS__
 
         private void OgeAl(string? anahtar)
         {
-            if (VizReji == null || !VizReji.isConnected || KjTipleri.OgeBul(anahtar) is not { } oge) return;
+            if (KjTipleri.OgeBul(anahtar) is not { } oge) return;
+            OtoAlDurdur(oge.Anahtar);
+            if (VizReji == null || !VizReji.isConnected) return;
             if (yayindakiOgeler.Remove(oge.Anahtar)) VizReji.Start(Sahne, oge.Cikis);
             if (OgeAlButonu(oge.Anahtar) is Button al)
             {
@@ -461,7 +891,12 @@ namespace __NS__
         {
             if (VizReji == null || !VizReji.isConnected) return;
             KjAl();
+            foreach (var alan in yayin.Keys.ToList()) AlanAl(alan, komut: true);   // ozel turler
             foreach (var anahtar in yayindakiOgeler.ToList()) OgeAl(anahtar);
+            // Canli uygulamalardaki gibi duruma bakmadan: ana bant, isim / telefon turleri ve yazili logo her zaman alinir
+            CikislariGonder(KjTipleri.Tumu.Where(t => t.Kaynak == "isim" || t == KjTipleri.Coz("", cift: false)));
+            foreach (var o in KjTipleri.Ogeler.Where(o => o.Metin != null)) VizReji.Start(Sahne, o.Cikis);
+            YayinDurumunuYaz();
             _btnGrup.ResetAllGroups();
             Log.Log("TÜMÜNÜ AL", "");
         }
@@ -469,10 +904,13 @@ namespace __NS__
         /// <summary>SIFIRLA sonrasi: komut gondermeden yayin durumunu temizler.</summary>
         private void YayinDurumunuSifirla()
         {
-            yayindakiKj = null;
+            yayin.Clear();
             aktifKulakcik = "";
             yayindakiOgeler.Clear();
-            btn_KjAl.Enabled = false;
+            foreach (var a in otoAl.Keys.ToList()) OtoAlDurdur(a);
+            sonVer.Clear();
+            btn_KjAl.Enabled = true;
+            foreach (var ver in OzelButonlari()) if (OzelAlButonu(ver.Tag as string) is Button ozelAl) ozelAl.Enabled = true;
             foreach (var ver in OgeVerButonlari()) if (OgeAlButonu(ver.Tag as string) is Button al) al.Enabled = false;
             YayinDurumunuYaz();
             _btnGrup.ResetAllGroups();

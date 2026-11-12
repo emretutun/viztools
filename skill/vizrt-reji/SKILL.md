@@ -75,16 +75,50 @@ python "__VIZTOOLS__\vizapp.py" --hedef "<uygulama klasoru>" --guncelle
 - **KULAKCIK**: bandin ustune eklenen kucuk grafik (4.5G, SKYPE, TELEFON, SM...). Metin yazilmaz,
   bant gizli kalir ("gozleri kapali"), yalnizca IN/OUT oynatilir. Secili bant + kulakcik birlikte verilir.
   Sahnede gizli (hidden) bir ust container altinda duran metinli turler genelde kulakciktir.
-- **OZEL TUR**: kendi VER butonu olan tek satirli tur (ISIMLIK, LOKASYON). Kulakcik eklenmez.
+- **OZEL TUR**: kendi VER ve AL butonu olan, banttan bagimsiz tur (ISIMLIK, TELEFON, LOKASYON).
+  KJ ekrandayken verilir; KJ AL onu almaz, kendi AL'i ya da TUMUNU AL alir. Ayni `alan`i tasiyan ozel turler
+  (isim ve telefon: "isimlik") birbirinin yerine girer: eski OUT, bekleme, yeni IN.
+  Yazisi nereden gelir (`kaynak`): "isim" = paneldeki ISIMLER listesi (isim + unvan; ISIM, TELEFON),
+  "kutu" = butonun ustundeki yazi kutusu (LOKASYON), "liste" = KJ listesi. Ayni alandakiler tek AL kullanir.
+- **FON**: zemin / renk secimi. Dosya yollari sahneden okunamaz; kullanici ya da ornek alinan uygulama soyler,
+  `kumanda.json`'daki `fon` alanina yazilir.
+- **YUVA**: sahnede X_1 / X_2 diye iki kopyasi olan grafik. Ayni tur yayindayken yeni yazi verilince
+  grafik alinmaz; siradaki yuvaya yazilip onun girisi oynatilir.
+- **ORTAK CIKIS**: KJ_FULL_OUT, GENEL_KJ_OUT gibi. KJ AL bunu oynatir; cikisi ortak olan turler arasinda
+  (tekli <-> ciftli) gecis cikis yapmadan olur.
 - **OGE**: metinsiz grafik, ayri VER/AL (program logo, sosyal medya, az sonra kapak, saat).
-- KJ AL (F7) KJ'yi, TUMUNU AL (F8) her seyi alir. Tur degisince eski tur OUT, 700 ms, yeni IN.
-- ROLL / sayfali akislar (DUA_ROLL gibi) ve kelebek formlari su an ureticide yok; kullanici
+- KJ AL (F7) bandi ve kulakcigi, TUMUNU AL (F8) her seyi alir. Bant turu degisince eski OUT, 700 ms, yeni IN.
+- Bu kurallar canli uygulamalarin kodundan cikarildi: `__VIZTOOLS__\REJI_KALIPLARI.md`. Sahneye ozel bir
+  davranis sorulursa (zemin rengi, fotograf, satir bazli bant...) once o belgeye bak.
+- ROLL / sayfali akislar (DUA_ROLL gibi) su an ureticide yok; kullanici
   "ayri yapilacak" dedi. Analiz soruyorsa ozel tur ya da oge olarak birak ve kullaniciya not dus.
 
 ## kumanda.json alanlari
 
 `uygulama`, `namespace`, `sahne`, `kelebek_klasoru`, `tarama` (tarama JSON yolu) ve:
-- `turler`: `{kod, etiket, giris, cikis, ust, alt|null, alan}`; giris/cikis director yolu, ust/alt metin container yolu.
+- `turler`: `{kod, etiket, giris, cikis, ust, alt|null, alan?, yuvalar?}`; giris/cikis director yolu, ust/alt metin
+  container yolu. `alan`: ozel turun ekran bolgesi (verilmezse kendi kodu; bant turlerinde yok sayilir).
+  `yuvalar`: `[{giris, cikis, ust, alt}]` ek yuvalar (2. yuva yanlis calisiyorsa bu alani silmek yeter).
+- Istege bagli alanlar (analiz bulabildigini kendisi yazar; gerisini sen ekle):
+  `ozeller[]`: `kaynak` "liste"|"isim"|"kutu", `tus` "F3", `al_tus` "F4".
+  `turler[]`: `ayirac` (unvan bosken gizlenen container), `resim: {container, varsayilan}` (fotografli grafik, GOZAT).
+  `ogeler[]`: `metin: {container, secenekler[]}` (yazili logo), `kj_ile` (KJ ile birlikte ver kutusu),
+  `oto_al_sn`, `bandi_al`, `gorunur[]`.
+  `fon: {secenekler[], varsayilan, ayarlar[{hedef, tip, yol, degerler}]}`; `hedef` alan ("altbant"), tur kodu ya da
+  oge anahtari; `tip` "imageclip" | "image" | "director" (deger START / REVERSE; "*" = diger secenekler).
+- Kullanici "su uygulamaya benzesin" derse o uygulamanin kodunu YALNIZCA oku; FON tablosu, logo yazisi, kisayollar,
+  sureli alma gibi sahneden okunamayan ayarlari oradan cikarip `kumanda.json`'a yaz, sonra `vizuret.py --guncelle --arayuz --derle`.
+- KELEBEK (bolunmus ekran) ayri sahnelerdir ve ikinci motorda (GRAFIK-1) oynar. viztools Graphic Hub klasorunu okuyamaz;
+  kelebek sahneleri once tanitilir:
+  - topluca: kullanici kelebek klasorunu `.via` olarak disa aktarir ->
+    `vizapp.py ... --kelebek /YOL/KELEBEK --kelebek-via dosya.via --kelebekler hepsi` (klasor zorunlu: yol taramaya yazilir);
+  - tek tek: sahne Artist'te acikken `python "__VIZTOOLS__\vizscan.py" --details`, sonra `--kelebekler AD1 AD2`.
+  Plan: `kelebekler[]` (`vizengine\kelebek.py` taramadan cikarir; alan adlarini tahminle yazma), `kelebek_klasoru`,
+  `kelebek_ayar: {katman "BACK"|"MAIN", klip}`.
+  Ayni adli sahne (3LU_SAG_DSF) her programda ayri sahnedir ve alan adlari farklidir (Haberturk `isim_text_1`, Show TV
+  `ISIM1`): bir programin taramasini baska programin klasoruyle eslestirme. Tarama yoksa kullaniciya soyle; yalnizca
+  kullanici Show TV adlandirmasini (`ISIM1` / `TITLE1` / `isimlik_bg_1`) dogrularsa arayuzdeki "Adiyla ekle" kullanilir.
+- `surum`: plan surumu. Eski plan guncellenirken cikis/yuva/alan bir kez analizden tazelenir.
 - `bantlar`: `{anahtar ("" = NORMAL), etiket, tek, cift}`; tek/cift = tur kodu.
 - `kulakciklar`: `{anahtar, etiket, giris, cikis}`.
 - `ozeller`: `{kod, etiket}` (kod turlerde olmali).
@@ -101,7 +135,15 @@ Etiketler panelde gorunen yazidir; Turkce buyuk harf ve kullanicinin dedigi yazi
   bu yuzden metin alanlari kaybolmaz. Ama uygulama yazarken adla yazar; metin alaninin ADI sahnede
   tekil olmali (analiz "birden fazla yerde geciyor" diye uyarir).
 - Engine bos director icin -1, kapali dal icin 0 dondurur; yalnizca 0 "okunamadi" demektir.
-- Cift yuvali sahneler (X_1 / X_2): uygulama 1. yuvayi kullanir.
+- Cift yuvali sahneler (X_1 / X_2): uygulama yazi degisiminde yuvalar arasinda gecer. Canli HTSPOR uygulamasi
+  ciftli KJ'de yalnizca 1. yuvayi kullaniyor; ciftlide 2. yuva sorun cikarirsa o turun `yuvalar`ini sil.
+- Eski sablonla uretilmis uygulama guncellenince `Main.Kj.cs` ve `KjTipleri.cs` yenilenir, eskileri `.yedek`
+  olarak kalir, panel yeniden dizilir. Kullanici bu dosyalara elle kod eklediyse yedekten tasimasi gerekir; soyle.
+- Satir bazli bant (NTR HT sahnesi: UST_KJ_DEGIS / ALT_KJ_DEGIS): analiz ayni yerdeki UST_x / ALT_x ciftini tek bant
+  yapar (`bantlar[].alt_satir`, `alt_cikis`). TEKLI ust satiri, CIFTLI ust + alt satiri verir.
+- `__VIZTOOLS__\ogrenilen\<sahne adi>.json` varsa analiz onu kendiliginden uygular (FON, logo yazisi, buton adlari).
+  Kullanici yeni bir sahne icin "su uygulamaya benzesin" derse ogrendiklerini `kumanda.json`'a yazmakla yetinme;
+  ayni sahne yeniden taraninca da gelsin diye bu klasore de bir dosya ekle (ornek: mevcut dosyalar).
 - Arac kodu degistikten sonra acik viztools penceresi eski kodla calisir; kapatip viztools.bat'i yeniden ac.
 
 - Engine'den `SCENE LOAD` asenkrondur ve az once yazilan metinleri ezer: uygulama sahneyi Reji
